@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gymnastics Vault â Schedule Maker</title>
+  <style>
+    :root { --face:#c0c0c0; --shadow:#808080; --dark:#000080; --ink:#111; --light:#fff; --panel:#e7e7e7; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:22px; min-height:100vh; background:#008080; color:var(--ink); font:14px "MS Sans Serif", Tahoma, Arial, sans-serif; }
+    .window { max-width:980px; margin:auto; background:var(--face); border:2px solid; border-color:var(--light) var(--ink) var(--ink) var(--light); box-shadow:3px 3px 0 var(--shadow); }
+    .titlebar { background:linear-gradient(90deg,#000080,#1084d0); color:#fff; height:30px; padding:6px 8px; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
+    .titlebar span:last-child { border:1px solid #fff; background:var(--face); color:#111; width:18px; height:18px; text-align:center; line-height:15px; font-size:16px; }
+    main { padding:14px; }
+    .intro { margin:0 0 14px; line-height:1.4; }
+    fieldset { margin:0 0 14px; padding:12px; border:2px groove var(--light); }
+    legend { padding:0 5px; font-weight:bold; }
+    .week { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    input, button { font:inherit; border:2px inset var(--light); background:#fff; padding:4px 6px; color:#111; }
+    button { background:var(--face); border:2px outset var(--light); cursor:pointer; min-width:102px; font-weight:bold; }
+    button:active { border-style:inset; }
+    .table-wrap { overflow-x:auto; }
+    table { border-collapse:collapse; width:100%; min-width:760px; background:var(--panel); }
+    th { background:var(--face); border:1px solid #555; padding:7px; text-align:left; }
+    td { border:1px solid #888; padding:5px; vertical-align:middle; }
+    td:first-child { font-weight:bold; width:112px; }
+    input[type=time] { width:120px; }
+    input[type=number] { width:72px; }
+    .hours { font-weight:bold; text-align:center; width:90px; }
+    .status { padding:10px; border:2px inset var(--light); background:#fff; min-height:44px; line-height:1.4; }
+    .ok { color:#087000; } .warn { color:#9b3c00; } .bad { color:#b00020; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .summary { display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:9px; margin:14px 0; }
+    .metric { background:#fff; border:2px inset var(--light); padding:8px; }
+    .metric b { display:block; color:#000080; font-size:18px; margin-top:2px; }
+    footer { margin-top:12px; font-size:12px; }
+    @media(max-width:600px){ body{padding:8px}.summary{grid-template-columns:1fr}.window{width:100%} }
+  </style>
+</head>
+<body>
+  <section class="window" role="application" aria-label="Gymnastics Vault schedule maker">
+    <div class="titlebar"><span>SCHEDULE MAKER</span><span aria-hidden="true">X</span></div>
+    <main>
+      <p class="intro">Plan your shifts for a SundayâSaturday workweek. The checker flags schedules that exceed 40 weekly hours, 8 daily hours, 5Â½ hours without a 30-minute break, or all 7 workdays.</p>
+      <fieldset>
+        <legend>Workweek</legend>
+        <div class="week"><label for="weekStart">Week begins (Sunday):</label><input id="weekStart" type="date"><button id="todayBtn" type="button">This Sunday</button></div>
+      </fieldset>
+      <fieldset>
+        <legend>Shift Planner</legend>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Day</th><th>Clock in</th><th>Clock out</th><th>Unpaid break (min.)</th><th>Paid hours</th><th>Valid?</th></tr></thead>
+            <tbody id="scheduleRows"></tbody>
+          </table>
+        </div>
+        <div class="actions"><button id="checkBtn" type="button">Check Schedule</button><button id="clearBtn" type="button">Clear Week</button></div>
+      </fieldset>
+      <div class="summary"><div class="metric">Weekly paid hours<b id="totalHours">0.00</b></div><div class="metric">Workdays used<b id="daysUsed">0 / 7</b></div><div class="metric">Days still off<b id="daysOff">7</b></div></div>
+      <div id="status" class="status" aria-live="polite">Enter shifts, then select <b>Check Schedule</b>.</div>
+      <footer>Rules used: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off each SundayâSaturday week; a 30-minute unpaid break is required if a shift is longer than 5Â½ hours.</footer>
+    </main>
+  </section>
+  <script>
+    const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const rows=document.getElementById('scheduleRows');
+    const toMins=t=>{ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
+    const fmt=n=>n.toFixed(2);
+    function row(day,i){ return `<tr data-day="${day}"><td>${day}<span class="date" id="date${i}"></span></td><td><input class="start" type="time" aria-label="${day} clock in"></td><td><input class="end" type="time" aria-label="${day} clock out"></td><td><input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="${day} unpaid break minutes"></td><td class="hours">0.00</td><td class="dayStatus">â</td></tr>`; }
+    rows.innerHTML=days.map(row).join('');
+    function updateDates(){ const s=document.getElementById('weekStart').value; days.forEach((_,i)=>{ const node=document.getElementById('date'+i); if(!s){node.textContent='';return;} const d=new Date(s+'T12:00:00'); d.setDate(d.getDate()+i); node.textContent=' Â· '+(d.getMonth()+1)+'/'+d.getDate(); }); }
+    function check(){ let total=0, worked=0, problems=[], notices=[];
+      [...rows.querySelectorAll('tr')].forEach(tr=>{ const day=tr.dataset.day, st=toMins(tr.querySelector('.start').value), en=toMins(tr.querySelector('.end').value), br=Number(tr.querySelector('.break').value||0), cell=tr.querySelector('.hours'), flag=tr.querySelector('.dayStatus');
+        if(st===null && en===null){cell.textContent='0.00';flag.textContent='[OFF]';flag.className='dayStatus ok';return;}
+        if(st===null || en===null){cell.textContent='--';flag.textContent='[FIX] Add times';flag.className='dayStatus bad';problems.push(day+': clock-in and clock-out are both required.');return;}
+        let elapsed=en-st; if(elapsed<=0) elapsed+=1440; const paid=(elapsed-br)/60; cell.textContent=paid>=0?fmt(paid):'â';
+        if(br>elapsed){flag.textContent='[FIX] Break';flag.className='dayStatus bad';problems.push(day+': break cannot be longer than the shift.');return;}
+        worked++; total+=paid; const issues=[];
+        if(paid>8) issues.push('over 8 paid hours');
+        if(elapsed>330 && br<30) issues.push('needs a 30-minute break');
+        if(issues.length){flag.textContent='[FIX] Shift';flag.className='dayStatus bad';problems.push(day+': '+issues.join(' and ')+'.');} else {flag.textContent='[OK] VALID';flag.className='dayStatus ok';}
+      });
+      document.getElementById('totalHours').textContent=fmt(total); document.getElementById('daysUsed').textContent=worked+' / 7'; document.getElementById('daysOff').textContent=7-worked;
+      if(total>40) problems.push('Weekly total is '+fmt(total)+' hours â over the 40-hour limit.');
+      if(worked===7) problems.push('You need at least one day off in the SundayâSaturday workweek.');
+      const status=document.getElementById('status');
+      if(problems.length){status.className='status bad';status.innerHTML='<b>Schedule needs changes:</b><br>â¢ '+problems.join('<br>â¢ ');} else {status.className='status ok';status.innerHTML='<b>Looks good.</b> '+fmt(total)+' paid hours across '+worked+' workday'+(worked===1?'':'s')+'.';}
+    }
+    document.getElementById('checkBtn').onclick=check;
+    document.getElementById('clearBtn').onclick=()=>{ rows.querySelectorAll('input').forEach(x=>{x.value=x.classList.contains('break')?'0':''}); check(); };
+    document.getElementById('todayBtn').onclick=()=>{const d=new Date(), diff=d.getDay(); d.setDate(d.getDate()-diff); document.getElementById('weekStart').value=d.toISOString().slice(0,10); updateDates();};
+    document.getElementById('weekStart').onchange=updateDates;
+    // Both events are used so the checker updates while typing and after native time pickers finish.
+    rows.addEventListener('input',check); rows.addEventListener('change',check); rows.addEventListener('blur',check,true);
+    document.getElementById('todayBtn').click(); check();
+  </script>
+</body>
+</html>
