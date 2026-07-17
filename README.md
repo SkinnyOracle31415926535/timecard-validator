@@ -1,10 +1,10 @@
-# Gymnastics Vault Timecard Validator
+# Timecard Validator
 
 A small, dependency-free weekly timecard validator. Each day supports up to three clock-in/out periods, with an optional unpaid break for every period.
 
 ## Live page
 
-[Open the Timecard Validator](https://skinnyoracle31415926535.github.io/gymnastics-vault-schedule-maker/)
+[Open the Timecard Validator](https://skinnyoracle31415926535.github.io/timecard-validator/)
 
 ## Checks
 
