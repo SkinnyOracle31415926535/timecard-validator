@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Validate timecards by checking daily and weekly work-hour limits, breaks, and required days off.">
-  <link rel="icon" type="image/png" href="assets/timecard-validator-logo.png">
+  <link rel="icon" type="image/png" href="assets/timecard-validator-logo.png?v=2">
+  <link rel="apple-touch-icon" href="assets/timecard-validator-logo.png?v=2">
   <title>Timecard Validator</title>
   <style>
     :root {
@@ -40,7 +41,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 30px;
+      height: 38px;
       padding: 6px 8px;
       background: linear-gradient(90deg, #000080, #1084d0);
       color: #fff;
@@ -54,8 +55,8 @@
     }
 
     .brand img {
-      width: 20px;
-      height: 20px;
+      width: 28px;
+      height: 28px;
       image-rendering: pixelated;
     }
 
@@ -71,6 +72,22 @@
     }
 
     main { padding: 14px; }
+    .app-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 14px;
+      padding: 8px;
+      border: 2px inset var(--light);
+      background: #fff;
+    }
+    .app-profile img {
+      width: 58px;
+      height: 58px;
+      image-rendering: pixelated;
+    }
+    .app-profile strong { color: var(--dark); font-size: 18px; }
+    .app-profile span { display: block; margin-top: 3px; }
     .intro { margin: 0 0 14px; line-height: 1.4; }
 
     fieldset {
@@ -195,6 +212,10 @@
   <section class="window" aria-label="Timecard Validator">
     <div class="titlebar"><span class="brand"><img src="assets/timecard-validator-logo.png" alt="">TIMECARD VALIDATOR</span><span aria-hidden="true">X</span></div>
     <main>
+      <div class="app-profile">
+        <img src="assets/timecard-validator-logo.png" alt="Timecard Validator pixel-art logo">
+        <div><strong>Timecard Validator</strong><span>Weekly work-hour and break checker</span></div>
+      </div>
       <p class="intro">Validate up to three clock-in/out periods per day for a Sunday–Saturday workweek. The validator totals every period and flags timecards that exceed 40 weekly hours, 8 daily hours, 5½ hours without a 30-minute break, or all 7 workdays.</p>
 
       <fieldset>
