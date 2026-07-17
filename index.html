@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Plan up to three clock-in and clock-out periods per day and check weekly work-hour limits.">
-  <title>Gymnastics Vault — Schedule Maker</title>
+  <meta name="description" content="Validate timecards by checking daily and weekly work-hour limits, breaks, and required days off.">
+  <link rel="icon" type="image/png" href="assets/timecard-validator-logo.png">
+  <title>Gymnastics Vault — Timecard Validator</title>
   <style>
     :root {
       --face: #c0c0c0;
@@ -44,6 +45,18 @@
       background: linear-gradient(90deg, #000080, #1084d0);
       color: #fff;
       font-weight: bold;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .brand img {
+      width: 20px;
+      height: 20px;
+      image-rendering: pixelated;
     }
 
     .titlebar span:last-child {
@@ -179,10 +192,10 @@
   </style>
 </head>
 <body>
-  <section class="window" aria-label="Gymnastics Vault schedule maker">
-    <div class="titlebar"><span>SCHEDULE MAKER</span><span aria-hidden="true">X</span></div>
+  <section class="window" aria-label="Gymnastics Vault Timecard Validator">
+    <div class="titlebar"><span class="brand"><img src="assets/timecard-validator-logo.png" alt="">TIMECARD VALIDATOR</span><span aria-hidden="true">X</span></div>
     <main>
-      <p class="intro">Plan up to three clock-in/out periods per day for a Sunday–Saturday workweek. The checker totals every period and flags schedules that exceed 40 weekly hours, 8 daily hours, 5½ hours without a 30-minute break, or all 7 workdays.</p>
+      <p class="intro">Validate up to three clock-in/out periods per day for a Sunday–Saturday workweek. The validator totals every period and flags timecards that exceed 40 weekly hours, 8 daily hours, 5½ hours without a 30-minute break, or all 7 workdays.</p>
 
       <fieldset>
         <legend>Workweek</legend>
@@ -194,7 +207,7 @@
       </fieldset>
 
       <fieldset>
-        <legend>Shift Planner</legend>
+        <legend>Timecard</legend>
         <div class="table-wrap">
           <table>
             <thead>
@@ -209,7 +222,7 @@
           </table>
         </div>
         <div class="actions">
-          <button id="checkBtn" type="button">Check Schedule</button>
+          <button id="checkBtn" type="button">Validate Timecard</button>
           <button id="clearBtn" type="button">Clear Week</button>
         </div>
       </fieldset>
@@ -220,7 +233,7 @@
         <div class="metric">Days still off<b id="daysOff">7</b></div>
       </div>
 
-      <div id="status" class="status" aria-live="polite">Enter shifts, then select <b>Check Schedule</b>.</div>
+      <div id="status" class="status" aria-live="polite">Enter shifts, then select <b>Validate Timecard</b>.</div>
       <footer>Rules used: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off each Sunday–Saturday week; a 30-minute unpaid break is required for any continuous period longer than 5½ hours.</footer>
     </main>
   </section>
@@ -414,7 +427,7 @@
       const status = document.getElementById('status');
       if (problems.length) {
         status.className = 'status bad';
-        status.innerHTML = `<b>Schedule needs changes:</b><br>• ${problems.join('<br>• ')}`;
+        status.innerHTML = `<b>Timecard needs changes:</b><br>• ${problems.join('<br>• ')}`;
       } else {
         status.className = 'status ok';
         status.innerHTML = `<b>Looks good.</b> ${fmt(weeklyTotal)} paid hours across ${workedDays} workday${workedDays === 1 ? '' : 's'}.`;
