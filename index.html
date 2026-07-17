@@ -3,96 +3,449 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gymnastics Vault â Schedule Maker</title>
+  <meta name="description" content="Plan up to three clock-in and clock-out periods per day and check weekly work-hour limits.">
+  <title>Gymnastics Vault — Schedule Maker</title>
   <style>
-    :root { --face:#c0c0c0; --shadow:#808080; --dark:#000080; --ink:#111; --light:#fff; --panel:#e7e7e7; }
-    * { box-sizing:border-box; }
-    body { margin:0; padding:22px; min-height:100vh; background:#008080; color:var(--ink); font:14px "MS Sans Serif", Tahoma, Arial, sans-serif; }
-    .window { max-width:980px; margin:auto; background:var(--face); border:2px solid; border-color:var(--light) var(--ink) var(--ink) var(--light); box-shadow:3px 3px 0 var(--shadow); }
-    .titlebar { background:linear-gradient(90deg,#000080,#1084d0); color:#fff; height:30px; padding:6px 8px; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
-    .titlebar span:last-child { border:1px solid #fff; background:var(--face); color:#111; width:18px; height:18px; text-align:center; line-height:15px; font-size:16px; }
-    main { padding:14px; }
-    .intro { margin:0 0 14px; line-height:1.4; }
-    fieldset { margin:0 0 14px; padding:12px; border:2px groove var(--light); }
-    legend { padding:0 5px; font-weight:bold; }
-    .week { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    input, button { font:inherit; border:2px inset var(--light); background:#fff; padding:4px 6px; color:#111; }
-    button { background:var(--face); border:2px outset var(--light); cursor:pointer; min-width:102px; font-weight:bold; }
-    button:active { border-style:inset; }
-    .table-wrap { overflow-x:auto; }
-    table { border-collapse:collapse; width:100%; min-width:760px; background:var(--panel); }
-    th { background:var(--face); border:1px solid #555; padding:7px; text-align:left; }
-    td { border:1px solid #888; padding:5px; vertical-align:middle; }
-    td:first-child { font-weight:bold; width:112px; }
-    input[type=time] { width:120px; }
-    input[type=number] { width:72px; }
-    .hours { font-weight:bold; text-align:center; width:90px; }
-    .status { padding:10px; border:2px inset var(--light); background:#fff; min-height:44px; line-height:1.4; }
-    .ok { color:#087000; } .warn { color:#9b3c00; } .bad { color:#b00020; }
-    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-    .summary { display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:9px; margin:14px 0; }
-    .metric { background:#fff; border:2px inset var(--light); padding:8px; }
-    .metric b { display:block; color:#000080; font-size:18px; margin-top:2px; }
-    footer { margin-top:12px; font-size:12px; }
-    @media(max-width:600px){ body{padding:8px}.summary{grid-template-columns:1fr}.window{width:100%} }
+    :root {
+      --face: #c0c0c0;
+      --shadow: #808080;
+      --dark: #000080;
+      --ink: #111;
+      --light: #fff;
+      --panel: #e7e7e7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 22px;
+      min-height: 100vh;
+      background: #008080;
+      color: var(--ink);
+      font: 14px "MS Sans Serif", Tahoma, Arial, sans-serif;
+    }
+
+    .window {
+      max-width: 1040px;
+      margin: auto;
+      background: var(--face);
+      border: 2px solid;
+      border-color: var(--light) var(--ink) var(--ink) var(--light);
+      box-shadow: 3px 3px 0 var(--shadow);
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 30px;
+      padding: 6px 8px;
+      background: linear-gradient(90deg, #000080, #1084d0);
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .titlebar span:last-child {
+      width: 18px;
+      height: 18px;
+      border: 1px solid #fff;
+      background: var(--face);
+      color: #111;
+      font-size: 16px;
+      line-height: 15px;
+      text-align: center;
+    }
+
+    main { padding: 14px; }
+    .intro { margin: 0 0 14px; line-height: 1.4; }
+
+    fieldset {
+      margin: 0 0 14px;
+      padding: 12px;
+      border: 2px groove var(--light);
+    }
+
+    legend { padding: 0 5px; font-weight: bold; }
+    .week { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    input,
+    button {
+      padding: 4px 6px;
+      border: 2px inset var(--light);
+      background: #fff;
+      color: #111;
+      font: inherit;
+    }
+
+    button {
+      min-width: 102px;
+      border: 2px outset var(--light);
+      background: var(--face);
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:active:not(:disabled) { border-style: inset; }
+    button:disabled { color: #666; cursor: not-allowed; }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      min-width: 800px;
+      border-collapse: collapse;
+      background: var(--panel);
+    }
+
+    th {
+      padding: 7px;
+      border: 1px solid #555;
+      background: var(--face);
+      text-align: left;
+    }
+
+    td {
+      padding: 6px;
+      border: 1px solid #888;
+      vertical-align: top;
+    }
+
+    .day-cell { width: 118px; font-weight: bold; }
+    .date { display: block; margin-top: 3px; color: #333; font-size: 12px; font-weight: normal; }
+    .periods { display: grid; gap: 7px; }
+
+    .period {
+      display: flex;
+      align-items: end;
+      gap: 7px;
+      padding: 7px;
+      border: 1px solid #999;
+      background: #f4f4f4;
+      flex-wrap: wrap;
+    }
+
+    .period-number {
+      align-self: center;
+      min-width: 58px;
+      color: var(--dark);
+      font-weight: bold;
+    }
+
+    .field-label { display: grid; gap: 2px; font-size: 11px; font-weight: bold; }
+    input[type="time"] { width: 112px; }
+    input[type="number"] { width: 76px; }
+
+    .remove-period {
+      min-width: 72px;
+      padding-inline: 7px;
+      color: #8b0000;
+    }
+
+    .add-period { min-width: 126px; margin-top: 7px; }
+    .period-limit { margin-left: 7px; color: #555; font-size: 12px; }
+    .hours { width: 92px; font-size: 16px; font-weight: bold; text-align: center; }
+    .day-status { width: 128px; font-weight: bold; }
+
+    .status {
+      min-height: 44px;
+      padding: 10px;
+      border: 2px inset var(--light);
+      background: #fff;
+      line-height: 1.4;
+    }
+
+    .ok { color: #087000; }
+    .warn { color: #9b3c00; }
+    .bad { color: #b00020; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 9px;
+      margin: 14px 0;
+    }
+
+    .metric { padding: 8px; border: 2px inset var(--light); background: #fff; }
+    .metric b { display: block; margin-top: 2px; color: var(--dark); font-size: 18px; }
+    footer { margin-top: 12px; font-size: 12px; }
+
+    @media (max-width: 600px) {
+      body { padding: 8px; }
+      .summary { grid-template-columns: 1fr; }
+      .window { width: 100%; }
+    }
   </style>
 </head>
 <body>
-  <section class="window" role="application" aria-label="Gymnastics Vault schedule maker">
+  <section class="window" aria-label="Gymnastics Vault schedule maker">
     <div class="titlebar"><span>SCHEDULE MAKER</span><span aria-hidden="true">X</span></div>
     <main>
-      <p class="intro">Plan your shifts for a SundayâSaturday workweek. The checker flags schedules that exceed 40 weekly hours, 8 daily hours, 5Â½ hours without a 30-minute break, or all 7 workdays.</p>
+      <p class="intro">Plan up to three clock-in/out periods per day for a Sunday–Saturday workweek. The checker totals every period and flags schedules that exceed 40 weekly hours, 8 daily hours, 5½ hours without a 30-minute break, or all 7 workdays.</p>
+
       <fieldset>
         <legend>Workweek</legend>
-        <div class="week"><label for="weekStart">Week begins (Sunday):</label><input id="weekStart" type="date"><button id="todayBtn" type="button">This Sunday</button></div>
+        <div class="week">
+          <label for="weekStart">Week begins (Sunday):</label>
+          <input id="weekStart" type="date">
+          <button id="todayBtn" type="button">This Sunday</button>
+        </div>
       </fieldset>
+
       <fieldset>
         <legend>Shift Planner</legend>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Day</th><th>Clock in</th><th>Clock out</th><th>Unpaid break (min.)</th><th>Paid hours</th><th>Valid?</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Clock-in/out periods</th>
+                <th>Paid hours</th>
+                <th>Valid?</th>
+              </tr>
+            </thead>
             <tbody id="scheduleRows"></tbody>
           </table>
         </div>
-        <div class="actions"><button id="checkBtn" type="button">Check Schedule</button><button id="clearBtn" type="button">Clear Week</button></div>
+        <div class="actions">
+          <button id="checkBtn" type="button">Check Schedule</button>
+          <button id="clearBtn" type="button">Clear Week</button>
+        </div>
       </fieldset>
-      <div class="summary"><div class="metric">Weekly paid hours<b id="totalHours">0.00</b></div><div class="metric">Workdays used<b id="daysUsed">0 / 7</b></div><div class="metric">Days still off<b id="daysOff">7</b></div></div>
+
+      <div class="summary">
+        <div class="metric">Weekly paid hours<b id="totalHours">0.00</b></div>
+        <div class="metric">Workdays used<b id="daysUsed">0 / 7</b></div>
+        <div class="metric">Days still off<b id="daysOff">7</b></div>
+      </div>
+
       <div id="status" class="status" aria-live="polite">Enter shifts, then select <b>Check Schedule</b>.</div>
-      <footer>Rules used: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off each SundayâSaturday week; a 30-minute unpaid break is required if a shift is longer than 5Â½ hours.</footer>
+      <footer>Rules used: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off each Sunday–Saturday week; a 30-minute unpaid break is required for any continuous period longer than 5½ hours.</footer>
     </main>
   </section>
+
   <script>
-    const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const rows=document.getElementById('scheduleRows');
-    const toMins=t=>{ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
-    const fmt=n=>n.toFixed(2);
-    function row(day,i){ return `<tr data-day="${day}"><td>${day}<span class="date" id="date${i}"></span></td><td><input class="start" type="time" aria-label="${day} clock in"></td><td><input class="end" type="time" aria-label="${day} clock out"></td><td><input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="${day} unpaid break minutes"></td><td class="hours">0.00</td><td class="dayStatus">â</td></tr>`; }
-    rows.innerHTML=days.map(row).join('');
-    function updateDates(){ const s=document.getElementById('weekStart').value; days.forEach((_,i)=>{ const node=document.getElementById('date'+i); if(!s){node.textContent='';return;} const d=new Date(s+'T12:00:00'); d.setDate(d.getDate()+i); node.textContent=' Â· '+(d.getMonth()+1)+'/'+d.getDate(); }); }
-    function check(){ let total=0, worked=0, problems=[], notices=[];
-      [...rows.querySelectorAll('tr')].forEach(tr=>{ const day=tr.dataset.day, st=toMins(tr.querySelector('.start').value), en=toMins(tr.querySelector('.end').value), br=Number(tr.querySelector('.break').value||0), cell=tr.querySelector('.hours'), flag=tr.querySelector('.dayStatus');
-        if(st===null && en===null){cell.textContent='0.00';flag.textContent='[OFF]';flag.className='dayStatus ok';return;}
-        if(st===null || en===null){cell.textContent='--';flag.textContent='[FIX] Add times';flag.className='dayStatus bad';problems.push(day+': clock-in and clock-out are both required.');return;}
-        let elapsed=en-st; if(elapsed<=0) elapsed+=1440; const paid=(elapsed-br)/60; cell.textContent=paid>=0?fmt(paid):'â';
-        if(br>elapsed){flag.textContent='[FIX] Break';flag.className='dayStatus bad';problems.push(day+': break cannot be longer than the shift.');return;}
-        worked++; total+=paid; const issues=[];
-        if(paid>8) issues.push('over 8 paid hours');
-        if(elapsed>330 && br<30) issues.push('needs a 30-minute break');
-        if(issues.length){flag.textContent='[FIX] Shift';flag.className='dayStatus bad';problems.push(day+': '+issues.join(' and ')+'.');} else {flag.textContent='[OK] VALID';flag.className='dayStatus ok';}
-      });
-      document.getElementById('totalHours').textContent=fmt(total); document.getElementById('daysUsed').textContent=worked+' / 7'; document.getElementById('daysOff').textContent=7-worked;
-      if(total>40) problems.push('Weekly total is '+fmt(total)+' hours â over the 40-hour limit.');
-      if(worked===7) problems.push('You need at least one day off in the SundayâSaturday workweek.');
-      const status=document.getElementById('status');
-      if(problems.length){status.className='status bad';status.innerHTML='<b>Schedule needs changes:</b><br>â¢ '+problems.join('<br>â¢ ');} else {status.className='status ok';status.innerHTML='<b>Looks good.</b> '+fmt(total)+' paid hours across '+worked+' workday'+(worked===1?'':'s')+'.';}
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const maxPeriods = 3;
+    const rows = document.getElementById('scheduleRows');
+
+    const toMins = value => {
+      if (!value) return null;
+      const [hours, minutes] = value.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const fmt = number => number.toFixed(2);
+
+    const toDateInputValue = date => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    function periodMarkup(day, index) {
+      const number = index + 1;
+      return `
+        <div class="period" data-period="${index}">
+          <span class="period-number">Period ${number}</span>
+          <label class="field-label">Clock in
+            <input class="start" type="time" aria-label="${day} period ${number} clock in">
+          </label>
+          <label class="field-label">Clock out
+            <input class="end" type="time" aria-label="${day} period ${number} clock out">
+          </label>
+          <label class="field-label">Unpaid break
+            <input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="${day} period ${number} unpaid break minutes">
+          </label>
+          ${index === 0 ? '' : '<button class="remove-period" type="button">Remove</button>'}
+        </div>`;
     }
-    document.getElementById('checkBtn').onclick=check;
-    document.getElementById('clearBtn').onclick=()=>{ rows.querySelectorAll('input').forEach(x=>{x.value=x.classList.contains('break')?'0':''}); check(); };
-    document.getElementById('todayBtn').onclick=()=>{const d=new Date(), diff=d.getDay(); d.setDate(d.getDate()-diff); document.getElementById('weekStart').value=d.toISOString().slice(0,10); updateDates();};
-    document.getElementById('weekStart').onchange=updateDates;
-    // Both events are used so the checker updates while typing and after native time pickers finish.
-    rows.addEventListener('input',check); rows.addEventListener('change',check); rows.addEventListener('blur',check,true);
-    document.getElementById('todayBtn').click(); check();
+
+    function rowMarkup(day, index) {
+      return `
+        <tr data-day="${day}">
+          <td class="day-cell">${day}<span class="date" id="date${index}"></span></td>
+          <td>
+            <div class="periods">${periodMarkup(day, 0)}</div>
+            <button class="add-period" type="button">+ Add period</button>
+            <span class="period-limit">1 of ${maxPeriods}</span>
+          </td>
+          <td class="hours">0.00</td>
+          <td class="day-status">—</td>
+        </tr>`;
+    }
+
+    function refreshPeriodControls(row) {
+      const periods = [...row.querySelectorAll('.period')];
+      const day = row.dataset.day;
+
+      periods.forEach((period, index) => {
+        period.dataset.period = index;
+        period.querySelector('.period-number').textContent = `Period ${index + 1}`;
+        period.querySelector('.start').setAttribute('aria-label', `${day} period ${index + 1} clock in`);
+        period.querySelector('.end').setAttribute('aria-label', `${day} period ${index + 1} clock out`);
+        period.querySelector('.break').setAttribute('aria-label', `${day} period ${index + 1} unpaid break minutes`);
+      });
+
+      const addButton = row.querySelector('.add-period');
+      addButton.disabled = periods.length >= maxPeriods;
+      row.querySelector('.period-limit').textContent = `${periods.length} of ${maxPeriods}`;
+    }
+
+    function addPeriod(row) {
+      const periods = row.querySelector('.periods');
+      const count = periods.querySelectorAll('.period').length;
+      if (count >= maxPeriods) return;
+
+      periods.insertAdjacentHTML('beforeend', periodMarkup(row.dataset.day, count));
+      refreshPeriodControls(row);
+      periods.lastElementChild.querySelector('.start').focus();
+      check();
+    }
+
+    function removePeriod(button) {
+      const row = button.closest('tr');
+      button.closest('.period').remove();
+      refreshPeriodControls(row);
+      check();
+    }
+
+    function resetRows() {
+      rows.innerHTML = days.map(rowMarkup).join('');
+      updateDates();
+      check();
+    }
+
+    function updateDates() {
+      const startValue = document.getElementById('weekStart').value;
+      days.forEach((_, index) => {
+        const node = document.getElementById(`date${index}`);
+        if (!node) return;
+        if (!startValue) {
+          node.textContent = '';
+          return;
+        }
+        const date = new Date(`${startValue}T12:00:00`);
+        date.setDate(date.getDate() + index);
+        node.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+      });
+    }
+
+    function check() {
+      let weeklyTotal = 0;
+      let workedDays = 0;
+      const problems = [];
+
+      [...rows.querySelectorAll('tr')].forEach(row => {
+        const day = row.dataset.day;
+        const hoursCell = row.querySelector('.hours');
+        const flag = row.querySelector('.day-status');
+        let dailyTotal = 0;
+        let completePeriods = 0;
+        let dayHasProblem = false;
+
+        [...row.querySelectorAll('.period')].forEach((period, index) => {
+          const periodNumber = index + 1;
+          const start = toMins(period.querySelector('.start').value);
+          const end = toMins(period.querySelector('.end').value);
+          const breakMinutes = Number(period.querySelector('.break').value || 0);
+
+          if (start === null && end === null) return;
+
+          if (start === null || end === null) {
+            dayHasProblem = true;
+            problems.push(`${day}, period ${periodNumber}: clock-in and clock-out are both required.`);
+            return;
+          }
+
+          let elapsed = end - start;
+          if (elapsed <= 0) elapsed += 1440;
+
+          if (breakMinutes < 0 || breakMinutes > elapsed) {
+            dayHasProblem = true;
+            problems.push(`${day}, period ${periodNumber}: the break must fit within the clocked period.`);
+            return;
+          }
+
+          const paid = (elapsed - breakMinutes) / 60;
+          dailyTotal += paid;
+          completePeriods += 1;
+
+          if (elapsed > 330 && breakMinutes < 30) {
+            dayHasProblem = true;
+            problems.push(`${day}, period ${periodNumber}: a period longer than 5½ hours needs a 30-minute break.`);
+          }
+        });
+
+        if (completePeriods > 0) workedDays += 1;
+        weeklyTotal += dailyTotal;
+        hoursCell.textContent = fmt(dailyTotal);
+
+        if (dailyTotal > 8) {
+          dayHasProblem = true;
+          problems.push(`${day}: ${fmt(dailyTotal)} paid hours is over the 8-hour daily limit.`);
+        }
+
+        if (dayHasProblem) {
+          flag.textContent = '[FIX] Day';
+          flag.className = 'day-status bad';
+        } else if (completePeriods > 0) {
+          flag.textContent = `[OK] ${completePeriods} period${completePeriods === 1 ? '' : 's'}`;
+          flag.className = 'day-status ok';
+        } else {
+          flag.textContent = '[OFF]';
+          flag.className = 'day-status ok';
+        }
+      });
+
+      document.getElementById('totalHours').textContent = fmt(weeklyTotal);
+      document.getElementById('daysUsed').textContent = `${workedDays} / 7`;
+      document.getElementById('daysOff').textContent = 7 - workedDays;
+
+      if (weeklyTotal > 40) {
+        problems.push(`Weekly total is ${fmt(weeklyTotal)} hours — over the 40-hour limit.`);
+      }
+      if (workedDays === 7) {
+        problems.push('You need at least one day off in the Sunday–Saturday workweek.');
+      }
+
+      const status = document.getElementById('status');
+      if (problems.length) {
+        status.className = 'status bad';
+        status.innerHTML = `<b>Schedule needs changes:</b><br>• ${problems.join('<br>• ')}`;
+      } else {
+        status.className = 'status ok';
+        status.innerHTML = `<b>Looks good.</b> ${fmt(weeklyTotal)} paid hours across ${workedDays} workday${workedDays === 1 ? '' : 's'}.`;
+      }
+    }
+
+    rows.addEventListener('click', event => {
+      const addButton = event.target.closest('.add-period');
+      if (addButton) addPeriod(addButton.closest('tr'));
+
+      const removeButton = event.target.closest('.remove-period');
+      if (removeButton) removePeriod(removeButton);
+    });
+
+    // These events keep totals current during typing and after native time pickers close.
+    rows.addEventListener('input', check);
+    rows.addEventListener('change', check);
+    rows.addEventListener('blur', check, true);
+    document.getElementById('checkBtn').addEventListener('click', check);
+    document.getElementById('clearBtn').addEventListener('click', resetRows);
+    document.getElementById('weekStart').addEventListener('change', updateDates);
+    document.getElementById('todayBtn').addEventListener('click', () => {
+      const date = new Date();
+      date.setDate(date.getDate() - date.getDay());
+      document.getElementById('weekStart').value = toDateInputValue(date);
+      updateDates();
+    });
+
+    rows.innerHTML = days.map(rowMarkup).join('');
+    document.getElementById('todayBtn').click();
+    check();
   </script>
 </body>
 </html>
