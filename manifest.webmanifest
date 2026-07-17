@@ -1,0 +1,22 @@
+{
+  "name": "Timecard Validator",
+  "short_name": "Timecard",
+  "description": "Validate weekly timecards for work-hour limits, breaks, and required days off.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#008080",
+  "theme_color": "#008080",
+  "icons": [
+    {
+      "src": "assets/icons/timecard-validator-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/timecard-validator-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
