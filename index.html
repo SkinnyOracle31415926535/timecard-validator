@@ -170,6 +170,9 @@
     .bad { color: #b00020; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
+    .week-card { margin-bottom: 16px; }
+    .week-range { margin-left: 5px; color: #333; font-size: 12px; font-weight: normal; }
+
     .summary {
       display: grid;
       grid-template-columns: repeat(3, minmax(120px, 1fr));
@@ -192,53 +195,29 @@
   <section class="window" aria-label="Timecard Validator">
     <div class="titlebar"><span>TIMECARD VALIDATOR</span><span aria-hidden="true">X</span></div>
     <main>
-      <p class="intro">Validate up to three clock-in/out periods per day for a Sunday–Saturday workweek. The validator totals every period and flags timecards that exceed 40 weekly hours, 8 daily hours, 5½ hours without a 30-minute break, or all 7 workdays.</p>
+      <p class="intro">Validate up to three clock-in/out periods per day for as many as four Saturday–Friday workweeks. Each week is checked independently for weekly hours, daily hours, required days off, and missing 30-minute breaks.</p>
 
       <fieldset>
         <legend>Workweek</legend>
         <div class="week">
-          <label for="weekStart">Week begins (Sunday):</label>
+          <label for="weekStart">Week 1 begins (Saturday):</label>
           <input id="weekStart" type="date">
-          <button id="todayBtn" type="button">This Sunday</button>
+          <button id="todayBtn" type="button">This Saturday</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>Timecard</legend>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th>Clock-in/out periods</th>
-                <th>Paid hours</th>
-                <th>Valid?</th>
-              </tr>
-            </thead>
-            <tbody id="scheduleRows"></tbody>
-          </table>
-        </div>
-        <div class="actions">
-          <button id="checkBtn" type="button">Validate Timecard</button>
-          <button id="clearBtn" type="button">Clear Week</button>
-        </div>
-      </fieldset>
+      <div id="weekCards"></div>
 
-      <div class="summary">
-        <div class="metric">Weekly paid hours<b id="totalHours">0.00</b></div>
-        <div class="metric">Workdays used<b id="daysUsed">0 / 7</b></div>
-        <div class="metric">Days still off<b id="daysOff">7</b></div>
-      </div>
-
-      <div id="status" class="status" aria-live="polite">Enter shifts, then select <b>Validate Timecard</b>.</div>
-      <footer>Rules used: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off each Sunday–Saturday week; a 30-minute unpaid break is required for any continuous period longer than 5½ hours.</footer>
+      <footer>Rules used for each Saturday–Friday week: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off; periods from 5½ through 6 hours with less than a 30-minute break receive a warning, and longer periods receive an error.</footer>
     </main>
   </section>
 
   <script>
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const maxPeriods = 3;
-    const rows = document.getElementById('scheduleRows');
+    const maxWeeks = 4;
+    const weekCards = document.getElementById('weekCards');
+    let visibleWeekCount = 1;
 
     const toMins = value => {
       if (!value) return null;
@@ -255,30 +234,30 @@
       return `${year}-${month}-${day}`;
     };
 
-    function periodMarkup(day, index) {
+    function periodMarkup(day, index, weekNumber) {
       const number = index + 1;
       return `
         <div class="period" data-period="${index}">
           <span class="period-number">Period ${number}</span>
           <label class="field-label">Clock in
-            <input class="start" type="time" aria-label="${day} period ${number} clock in">
+            <input class="start" type="time" aria-label="Week ${weekNumber}, ${day}, period ${number} clock in">
           </label>
           <label class="field-label">Clock out
-            <input class="end" type="time" aria-label="${day} period ${number} clock out">
+            <input class="end" type="time" aria-label="Week ${weekNumber}, ${day}, period ${number} clock out">
           </label>
           <label class="field-label">Unpaid break
-            <input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="${day} period ${number} unpaid break minutes">
+            <input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="Week ${weekNumber}, ${day}, period ${number} unpaid break minutes">
           </label>
-          ${index === 0 ? '' : '<button class="remove-period" type="button">Remove</button>'}
+          <button class="remove-period" type="button"${index === 0 ? ' hidden' : ''}>Remove</button>
         </div>`;
     }
 
-    function rowMarkup(day, index) {
+    function rowMarkup(day, weekNumber) {
       return `
         <tr data-day="${day}">
-          <td class="day-cell">${day}<span class="date" id="date${index}"></span></td>
+          <td class="day-cell">${day}<span class="date"></span></td>
           <td>
-            <div class="periods">${periodMarkup(day, 0)}</div>
+            <div class="periods">${periodMarkup(day, 0, weekNumber)}</div>
             <button class="add-period" type="button">+ Add period</button>
             <span class="period-limit">1 of ${maxPeriods}</span>
           </td>
@@ -287,16 +266,52 @@
         </tr>`;
     }
 
+    function weekCardMarkup(index) {
+      const weekNumber = index + 1;
+      return `
+        <fieldset class="week-card" data-week-index="${index}"${index === 0 ? '' : ' hidden'}>
+          <legend>Week ${weekNumber}<span class="week-range"></span></legend>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Clock-in/out periods</th>
+                  <th>Paid hours</th>
+                  <th>Valid?</th>
+                </tr>
+              </thead>
+              <tbody class="schedule-rows">${days.map(day => rowMarkup(day, weekNumber)).join('')}</tbody>
+            </table>
+          </div>
+          <div class="actions">
+            <button class="check-week" type="button">Validate Week</button>
+            <button class="clear-week" type="button">Clear Week</button>
+            ${index === 0 ? `
+              <button id="showWeekBtn" type="button">Show +1 Week</button>
+              <button id="hideWeekBtn" type="button" disabled>Hide 1 Week</button>` : ''}
+          </div>
+          <div class="summary">
+            <div class="metric">Weekly paid hours<b class="total-hours">0.00</b></div>
+            <div class="metric">Workdays used<b class="days-used">0 / 7</b></div>
+            <div class="metric">Days still off<b class="days-off">7</b></div>
+          </div>
+          <div class="status" aria-live="polite">Enter shifts, then select <b>Validate Week</b>.</div>
+        </fieldset>`;
+    }
+
     function refreshPeriodControls(row) {
       const periods = [...row.querySelectorAll('.period')];
       const day = row.dataset.day;
+      const weekNumber = Number(row.closest('.week-card').dataset.weekIndex) + 1;
 
       periods.forEach((period, index) => {
         period.dataset.period = index;
         period.querySelector('.period-number').textContent = `Period ${index + 1}`;
-        period.querySelector('.start').setAttribute('aria-label', `${day} period ${index + 1} clock in`);
-        period.querySelector('.end').setAttribute('aria-label', `${day} period ${index + 1} clock out`);
-        period.querySelector('.break').setAttribute('aria-label', `${day} period ${index + 1} unpaid break minutes`);
+        period.querySelector('.start').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock in`);
+        period.querySelector('.end').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock out`);
+        period.querySelector('.break').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} unpaid break minutes`);
+        period.querySelector('.remove-period').hidden = index === 0;
       });
 
       const addButton = row.querySelector('.add-period');
@@ -304,49 +319,89 @@
       row.querySelector('.period-limit').textContent = `${periods.length} of ${maxPeriods}`;
     }
 
+    function sortPeriods(row) {
+      const periodsContainer = row.querySelector('.periods');
+      const periods = [...periodsContainer.querySelectorAll('.period')];
+      const sorted = periods
+        .map((period, originalIndex) => ({
+          period,
+          originalIndex,
+          start: toMins(period.querySelector('.start').value)
+        }))
+        .sort((a, b) => {
+          if (a.start === null && b.start === null) return a.originalIndex - b.originalIndex;
+          if (a.start === null) return 1;
+          if (b.start === null) return -1;
+          return a.start - b.start || a.originalIndex - b.originalIndex;
+        });
+
+      sorted.forEach(({ period }) => periodsContainer.appendChild(period));
+      refreshPeriodControls(row);
+    }
+
     function addPeriod(row) {
       const periods = row.querySelector('.periods');
       const count = periods.querySelectorAll('.period').length;
       if (count >= maxPeriods) return;
 
-      periods.insertAdjacentHTML('beforeend', periodMarkup(row.dataset.day, count));
+      const weekNumber = Number(row.closest('.week-card').dataset.weekIndex) + 1;
+      periods.insertAdjacentHTML('beforeend', periodMarkup(row.dataset.day, count, weekNumber));
       refreshPeriodControls(row);
       periods.lastElementChild.querySelector('.start').focus();
-      check();
+      checkWeek(row.closest('.week-card'));
     }
 
     function removePeriod(button) {
       const row = button.closest('tr');
       button.closest('.period').remove();
       refreshPeriodControls(row);
-      check();
+      checkWeek(row.closest('.week-card'));
     }
 
-    function resetRows() {
-      rows.innerHTML = days.map(rowMarkup).join('');
+    function resetWeek(card) {
+      const weekNumber = Number(card.dataset.weekIndex) + 1;
+      card.querySelector('.schedule-rows').innerHTML = days.map(day => rowMarkup(day, weekNumber)).join('');
       updateDates();
-      check();
+      checkWeek(card);
     }
 
     function updateDates() {
       const startValue = document.getElementById('weekStart').value;
-      days.forEach((_, index) => {
-        const node = document.getElementById(`date${index}`);
-        if (!node) return;
+      [...weekCards.querySelectorAll('.week-card')].forEach(card => {
+        const weekIndex = Number(card.dataset.weekIndex);
+        const dateNodes = [...card.querySelectorAll('.date')];
+        const rangeNode = card.querySelector('.week-range');
+
         if (!startValue) {
-          node.textContent = '';
+          dateNodes.forEach(node => { node.textContent = ''; });
+          rangeNode.textContent = '';
           return;
         }
-        const date = new Date(`${startValue}T12:00:00`);
-        date.setDate(date.getDate() + index);
-        node.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+
+        const weekStart = new Date(`${startValue}T12:00:00`);
+        weekStart.setDate(weekStart.getDate() + weekIndex * 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        rangeNode.textContent = `(${weekStart.getMonth() + 1}/${weekStart.getDate()}–${weekEnd.getMonth() + 1}/${weekEnd.getDate()})`;
+
+        dateNodes.forEach((node, dayIndex) => {
+          const date = new Date(weekStart);
+          date.setDate(date.getDate() + dayIndex);
+          node.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+        });
       });
     }
 
-    function check() {
+    function checkWeek(card, sortBeforeCheck = false) {
       let weeklyTotal = 0;
       let workedDays = 0;
-      const problems = [];
+      const errors = [];
+      const warnings = [];
+      const rows = card.querySelector('.schedule-rows');
+
+      if (sortBeforeCheck) {
+        [...rows.querySelectorAll('tr')].forEach(sortPeriods);
+      }
 
       [...rows.querySelectorAll('tr')].forEach(row => {
         const day = row.dataset.day;
@@ -354,7 +409,8 @@
         const flag = row.querySelector('.day-status');
         let dailyTotal = 0;
         let completePeriods = 0;
-        let dayHasProblem = false;
+        let dayHasError = false;
+        let dayHasWarning = false;
 
         [...row.querySelectorAll('.period')].forEach((period, index) => {
           const periodNumber = index + 1;
@@ -365,8 +421,8 @@
           if (start === null && end === null) return;
 
           if (start === null || end === null) {
-            dayHasProblem = true;
-            problems.push(`${day}, period ${periodNumber}: clock-in and clock-out are both required.`);
+            dayHasError = true;
+            errors.push(`${day}, period ${periodNumber}: clock-in and clock-out are both required.`);
             return;
           }
 
@@ -374,8 +430,8 @@
           if (elapsed <= 0) elapsed += 1440;
 
           if (breakMinutes < 0 || breakMinutes > elapsed) {
-            dayHasProblem = true;
-            problems.push(`${day}, period ${periodNumber}: the break must fit within the clocked period.`);
+            dayHasError = true;
+            errors.push(`${day}, period ${periodNumber}: the break must fit within the clocked period.`);
             return;
           }
 
@@ -383,9 +439,12 @@
           dailyTotal += paid;
           completePeriods += 1;
 
-          if (elapsed > 330 && breakMinutes < 30) {
-            dayHasProblem = true;
-            problems.push(`${day}, period ${periodNumber}: a period longer than 5½ hours needs a 30-minute break.`);
+          if (elapsed > 360 && breakMinutes < 30) {
+            dayHasError = true;
+            errors.push(`${day}, period ${periodNumber}: a period longer than 6 hours needs a 30-minute break.`);
+          } else if (elapsed >= 330 && breakMinutes < 30) {
+            dayHasWarning = true;
+            warnings.push(`${day}, period ${periodNumber}: ${Math.floor(elapsed / 60)}h ${String(elapsed % 60).padStart(2, '0')}m without a 30-minute break.`);
           }
         });
 
@@ -394,13 +453,16 @@
         hoursCell.textContent = fmt(dailyTotal);
 
         if (dailyTotal > 8) {
-          dayHasProblem = true;
-          problems.push(`${day}: ${fmt(dailyTotal)} paid hours is over the 8-hour daily limit.`);
+          dayHasError = true;
+          errors.push(`${day}: ${fmt(dailyTotal)} paid hours is over the 8-hour daily limit.`);
         }
 
-        if (dayHasProblem) {
+        if (dayHasError) {
           flag.textContent = '[FIX] Day';
           flag.className = 'day-status bad';
+        } else if (dayHasWarning) {
+          flag.textContent = '[WARN] Break';
+          flag.className = 'day-status warn';
         } else if (completePeriods > 0) {
           flag.textContent = `[OK] ${completePeriods} period${completePeriods === 1 ? '' : 's'}`;
           flag.className = 'day-status ok';
@@ -410,52 +472,83 @@
         }
       });
 
-      document.getElementById('totalHours').textContent = fmt(weeklyTotal);
-      document.getElementById('daysUsed').textContent = `${workedDays} / 7`;
-      document.getElementById('daysOff').textContent = 7 - workedDays;
+      card.querySelector('.total-hours').textContent = fmt(weeklyTotal);
+      card.querySelector('.days-used').textContent = `${workedDays} / 7`;
+      card.querySelector('.days-off').textContent = 7 - workedDays;
 
       if (weeklyTotal > 40) {
-        problems.push(`Weekly total is ${fmt(weeklyTotal)} hours — over the 40-hour limit.`);
+        errors.push(`Weekly total is ${fmt(weeklyTotal)} hours — over the 40-hour limit.`);
       }
       if (workedDays === 7) {
-        problems.push('You need at least one day off in the Sunday–Saturday workweek.');
+        errors.push('You need at least one day off in the Saturday–Friday workweek.');
       }
 
-      const status = document.getElementById('status');
-      if (problems.length) {
+      const status = card.querySelector('.status');
+      if (errors.length) {
         status.className = 'status bad';
-        status.innerHTML = `<b>Timecard needs changes:</b><br>• ${problems.join('<br>• ')}`;
+        status.innerHTML = `<b>Timecard needs changes:</b><br>• ${errors.join('<br>• ')}${warnings.length ? `<br><b>Warnings:</b><br>• ${warnings.join('<br>• ')}` : ''}`;
+      } else if (warnings.length) {
+        status.className = 'status warn';
+        status.innerHTML = `<b>Review break warning${warnings.length === 1 ? '' : 's'}:</b><br>• ${warnings.join('<br>• ')}`;
       } else {
         status.className = 'status ok';
         status.innerHTML = `<b>Looks good.</b> ${fmt(weeklyTotal)} paid hours across ${workedDays} workday${workedDays === 1 ? '' : 's'}.`;
       }
     }
 
-    rows.addEventListener('click', event => {
+    function setVisibleWeekCount(nextCount) {
+      visibleWeekCount = Math.max(1, Math.min(maxWeeks, nextCount));
+      [...weekCards.querySelectorAll('.week-card')].forEach((card, index) => {
+        card.hidden = index >= visibleWeekCount;
+        if (!card.hidden) checkWeek(card, true);
+      });
+      document.getElementById('showWeekBtn').disabled = visibleWeekCount === maxWeeks;
+      document.getElementById('hideWeekBtn').disabled = visibleWeekCount === 1;
+    }
+
+    weekCards.innerHTML = Array.from({ length: maxWeeks }, (_, index) => weekCardMarkup(index)).join('');
+
+    weekCards.addEventListener('click', event => {
       const addButton = event.target.closest('.add-period');
       if (addButton) addPeriod(addButton.closest('tr'));
 
       const removeButton = event.target.closest('.remove-period');
       if (removeButton) removePeriod(removeButton);
+
+      const checkButton = event.target.closest('.check-week');
+      if (checkButton) checkWeek(checkButton.closest('.week-card'), true);
+
+      const clearButton = event.target.closest('.clear-week');
+      if (clearButton) resetWeek(clearButton.closest('.week-card'));
     });
 
     // These events keep totals current during typing and after native time pickers close.
-    rows.addEventListener('input', check);
-    rows.addEventListener('change', check);
-    rows.addEventListener('blur', check, true);
-    document.getElementById('checkBtn').addEventListener('click', check);
-    document.getElementById('clearBtn').addEventListener('click', resetRows);
-    document.getElementById('weekStart').addEventListener('change', updateDates);
+    weekCards.addEventListener('input', event => checkWeek(event.target.closest('.week-card')));
+    weekCards.addEventListener('change', event => {
+      const card = event.target.closest('.week-card');
+      if (event.target.matches('.start')) sortPeriods(event.target.closest('tr'));
+      checkWeek(card);
+    });
+    weekCards.addEventListener('blur', event => checkWeek(event.target.closest('.week-card')), true);
+    document.getElementById('showWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount + 1));
+    document.getElementById('hideWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount - 1));
+    document.getElementById('weekStart').addEventListener('change', event => {
+      if (event.target.value) {
+        const date = new Date(`${event.target.value}T12:00:00`);
+        date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
+        event.target.value = toDateInputValue(date);
+      }
+      updateDates();
+    });
     document.getElementById('todayBtn').addEventListener('click', () => {
       const date = new Date();
-      date.setDate(date.getDate() - date.getDay());
+      date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
       document.getElementById('weekStart').value = toDateInputValue(date);
       updateDates();
     });
 
-    rows.innerHTML = days.map(rowMarkup).join('');
     document.getElementById('todayBtn').click();
-    check();
+    setVisibleWeekCount(1);
   </script>
 </body>
 </html>
