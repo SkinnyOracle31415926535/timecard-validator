@@ -1,6 +1,6 @@
 # Timecard Validator
 
-A small, dependency-free timecard validator for up to four consecutive Saturday–Friday workweeks. Each day supports up to three clock-in/out periods, with an optional unpaid break for every period. Periods automatically sort by clock-in time after you finish editing a day.
+A small, dependency-free timecard validator for up to four consecutive Saturday–Friday workweeks. Each day supports up to three clock-in/out periods, with an optional unpaid break for every period. Periods automatically sort by clock-in time after you finish editing a day. Your entries are saved automatically in this browser and restored when you reopen the app.
 
 ## Live page
 

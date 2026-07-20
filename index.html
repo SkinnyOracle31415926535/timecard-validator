@@ -216,6 +216,7 @@
     const days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const maxPeriods = 3;
     const maxWeeks = 4;
+    const storageKey = 'timecard-validator-v1';
     const weekCards = document.getElementById('weekCards');
     let visibleWeekCount = 1;
 
@@ -351,6 +352,7 @@
       refreshPeriodControls(row);
       periods.lastElementChild.querySelector('.start').focus();
       checkWeek(row.closest('.week-card'));
+      saveState();
     }
 
     function removePeriod(button) {
@@ -358,6 +360,7 @@
       button.closest('.period').remove();
       refreshPeriodControls(row);
       checkWeek(row.closest('.week-card'));
+      saveState();
     }
 
     function resetWeek(card) {
@@ -365,6 +368,7 @@
       card.querySelector('.schedule-rows').innerHTML = days.map(day => rowMarkup(day, weekNumber)).join('');
       updateDates();
       checkWeek(card);
+      saveState();
     }
 
     function updateDates() {
@@ -392,6 +396,71 @@
           node.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
         });
       });
+    }
+
+    function saveState() {
+      const state = {
+        version: 1,
+        weekStart: document.getElementById('weekStart').value,
+        visibleWeekCount,
+        weeks: [...weekCards.querySelectorAll('.week-card')].map(card => ({
+          days: [...card.querySelectorAll('tr[data-day]')].map(row => ({
+            periods: [...row.querySelectorAll('.period')].map(period => ({
+              start: period.querySelector('.start').value,
+              end: period.querySelector('.end').value,
+              breakMinutes: period.querySelector('.break').value
+            }))
+          }))
+        }))
+      };
+
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch {
+        // The timecard still works when browser storage is unavailable.
+      }
+    }
+
+    function restoreState() {
+      let saved;
+      try {
+        saved = JSON.parse(localStorage.getItem(storageKey));
+      } catch {
+        return false;
+      }
+      if (!saved || saved.version !== 1 || !Array.isArray(saved.weeks)) return false;
+
+      if (typeof saved.weekStart === 'string') document.getElementById('weekStart').value = saved.weekStart;
+      saved.weeks.slice(0, maxWeeks).forEach((savedWeek, weekIndex) => {
+        if (!savedWeek || !Array.isArray(savedWeek.days)) return;
+        const card = weekCards.querySelector(`.week-card[data-week-index="${weekIndex}"]`);
+        const rows = [...card.querySelectorAll('tr[data-day]')];
+
+        savedWeek.days.slice(0, days.length).forEach((savedDay, dayIndex) => {
+          const savedPeriods = savedDay && Array.isArray(savedDay.periods)
+            ? savedDay.periods.slice(0, maxPeriods)
+            : [];
+          if (savedPeriods.length === 0) return;
+
+          const row = rows[dayIndex];
+          const periods = row.querySelector('.periods');
+          periods.innerHTML = savedPeriods.map((_, index) => periodMarkup(days[dayIndex], index, weekIndex + 1)).join('');
+          [...periods.querySelectorAll('.period')].forEach((period, periodIndex) => {
+            const savedPeriod = savedPeriods[periodIndex] || {};
+            period.querySelector('.start').value = typeof savedPeriod.start === 'string' ? savedPeriod.start : '';
+            period.querySelector('.end').value = typeof savedPeriod.end === 'string' ? savedPeriod.end : '';
+            period.querySelector('.break').value = typeof savedPeriod.breakMinutes === 'string' || typeof savedPeriod.breakMinutes === 'number'
+              ? savedPeriod.breakMinutes
+              : '0';
+          });
+          refreshPeriodControls(row);
+        });
+      });
+
+      updateDates();
+      const restoredWeekCount = Number(saved.visibleWeekCount);
+      setVisibleWeekCount(Number.isFinite(restoredWeekCount) ? restoredWeekCount : 1);
+      return true;
     }
 
     function checkWeek(card, sortBeforeCheck = false) {
@@ -518,18 +587,25 @@
       if (removeButton) removePeriod(removeButton);
 
       const checkButton = event.target.closest('.check-week');
-      if (checkButton) checkWeek(checkButton.closest('.week-card'), true);
+      if (checkButton) {
+        checkWeek(checkButton.closest('.week-card'), true);
+        saveState();
+      }
 
       const clearButton = event.target.closest('.clear-week');
       if (clearButton) resetWeek(clearButton.closest('.week-card'));
     });
 
     // Keep totals current without moving the active native time input.
-    weekCards.addEventListener('input', event => checkWeek(event.target.closest('.week-card')));
+    weekCards.addEventListener('input', event => {
+      checkWeek(event.target.closest('.week-card'));
+      saveState();
+    });
     weekCards.addEventListener('change', event => {
       const card = event.target.closest('.week-card');
       if (event.target.matches('.start')) event.target.closest('tr').dataset.sortPending = 'true';
       checkWeek(card);
+      saveState();
     });
     weekCards.addEventListener('blur', event => {
       const card = event.target.closest('.week-card');
@@ -541,10 +617,17 @@
         if (!row.isConnected || row.dataset.sortPending !== 'true' || row.contains(document.activeElement)) return;
         sortPeriods(row);
         checkWeek(card);
+        saveState();
       }, 0);
     }, true);
-    document.getElementById('showWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount + 1));
-    document.getElementById('hideWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount - 1));
+    document.getElementById('showWeekBtn').addEventListener('click', () => {
+      setVisibleWeekCount(visibleWeekCount + 1);
+      saveState();
+    });
+    document.getElementById('hideWeekBtn').addEventListener('click', () => {
+      setVisibleWeekCount(visibleWeekCount - 1);
+      saveState();
+    });
     document.getElementById('weekStart').addEventListener('change', event => {
       if (event.target.value) {
         const date = new Date(`${event.target.value}T12:00:00`);
@@ -552,16 +635,20 @@
         event.target.value = toDateInputValue(date);
       }
       updateDates();
+      saveState();
     });
     document.getElementById('todayBtn').addEventListener('click', () => {
       const date = new Date();
       date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
       document.getElementById('weekStart').value = toDateInputValue(date);
       updateDates();
+      saveState();
     });
 
-    document.getElementById('todayBtn').click();
-    setVisibleWeekCount(1);
+    if (!restoreState()) {
+      document.getElementById('todayBtn').click();
+      setVisibleWeekCount(1);
+    }
   </script>
 </body>
 </html>
