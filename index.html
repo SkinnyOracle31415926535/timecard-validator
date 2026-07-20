@@ -335,7 +335,9 @@
           return a.start - b.start || a.originalIndex - b.originalIndex;
         });
 
-      sorted.forEach(({ period }) => periodsContainer.appendChild(period));
+      const orderChanged = sorted.some(({ period }, index) => period !== periods[index]);
+      if (orderChanged) sorted.forEach(({ period }) => periodsContainer.appendChild(period));
+      delete row.dataset.sortPending;
       refreshPeriodControls(row);
     }
 
@@ -522,14 +524,25 @@
       if (clearButton) resetWeek(clearButton.closest('.week-card'));
     });
 
-    // These events keep totals current during typing and after native time pickers close.
+    // Keep totals current without moving the active native time input.
     weekCards.addEventListener('input', event => checkWeek(event.target.closest('.week-card')));
     weekCards.addEventListener('change', event => {
       const card = event.target.closest('.week-card');
-      if (event.target.matches('.start')) sortPeriods(event.target.closest('tr'));
+      if (event.target.matches('.start')) event.target.closest('tr').dataset.sortPending = 'true';
       checkWeek(card);
     });
-    weekCards.addEventListener('blur', event => checkWeek(event.target.closest('.week-card')), true);
+    weekCards.addEventListener('blur', event => {
+      const card = event.target.closest('.week-card');
+      const row = event.target.closest('tr');
+      checkWeek(card);
+
+      if (!row || row.dataset.sortPending !== 'true') return;
+      setTimeout(() => {
+        if (!row.isConnected || row.dataset.sortPending !== 'true' || row.contains(document.activeElement)) return;
+        sortPeriods(row);
+        checkWeek(card);
+      }, 0);
+    }, true);
     document.getElementById('showWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount + 1));
     document.getElementById('hideWeekBtn').addEventListener('click', () => setVisibleWeekCount(visibleWeekCount - 1));
     document.getElementById('weekStart').addEventListener('change', event => {
