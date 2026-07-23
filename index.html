@@ -80,7 +80,8 @@
     .week { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
     input,
-    button {
+    button,
+    .timecard-link {
       padding: 4px 6px;
       border: 2px inset var(--light);
       background: #fff;
@@ -88,7 +89,8 @@
       font: inherit;
     }
 
-    button {
+    button,
+    .timecard-link {
       min-width: 102px;
       border: 2px outset var(--light);
       background: var(--face);
@@ -96,7 +98,16 @@
       font-weight: bold;
     }
 
-    button:active:not(:disabled) { border-style: inset; }
+    .timecard-link {
+      display: inline-block;
+      box-sizing: border-box;
+      margin-bottom: 14px;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    button:active:not(:disabled),
+    .timecard-link:active { border-style: inset; }
     button:disabled { color: #666; cursor: not-allowed; }
 
     .table-wrap { overflow-x: auto; }
@@ -195,6 +206,7 @@
   <section class="window" aria-label="Timecard Validator">
     <div class="titlebar"><span>TIMECARD VALIDATOR</span><span aria-hidden="true">X</span></div>
     <main>
+      <a class="timecard-link" href="https://clock.payrollservers.us/ess/main/timecard" target="_blank" rel="noopener noreferrer">Timecard Link</a>
       <p class="intro">Validate up to three clock-in/out periods per day for as many as four Saturday–Friday workweeks. Each week is checked independently for weekly hours, daily hours, required days off, and missing 30-minute breaks.</p>
 
       <fieldset>
