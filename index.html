@@ -155,7 +155,6 @@
 
     .field-label { display: grid; gap: 2px; font-size: 11px; font-weight: bold; }
     input[type="time"] { width: 112px; }
-    input[type="number"] { width: 76px; }
 
     .remove-period {
       min-width: 72px;
@@ -163,8 +162,11 @@
       color: #8b0000;
     }
 
-    .add-period { min-width: 126px; margin-top: 7px; }
-    .period-limit { margin-left: 7px; color: #555; font-size: 12px; }
+    .period-actions { display: flex; align-items: center; gap: 7px; margin-top: 7px; }
+    .add-period { min-width: 126px; }
+    .period-limit { color: #555; font-size: 12px; }
+    .copy-hours { min-width: 104px; margin-left: auto; }
+    .copy-hours.copied { color: #087000; }
     .hours { width: 92px; font-size: 16px; font-weight: bold; text-align: center; }
     .day-status { width: 128px; font-weight: bold; }
 
@@ -181,7 +183,7 @@
     .bad { color: #b00020; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
-    .week-card { margin-bottom: 16px; }
+    .week-card { min-width: 0; margin-bottom: 16px; }
     .week-range { margin-left: 5px; color: #333; font-size: 12px; font-weight: normal; }
 
     .summary {
@@ -220,7 +222,7 @@
 
       <div id="weekCards"></div>
 
-      <footer>Rules used for each Saturday–Friday week: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off; periods from 5½ through 6 hours with less than a 30-minute break receive a warning, and longer periods receive an error.</footer>
+      <footer>Rules used for each Saturday–Friday week: maximum 40 paid hours/week; maximum 8 paid hours/day; at least one day off; days from 5½ through 6 worked hours without a 30-minute gap between periods receive a warning, and longer days receive an error.</footer>
     </main>
   </section>
 
@@ -229,6 +231,7 @@
     const maxPeriods = 3;
     const maxWeeks = 4;
     const storageKey = 'timecard-validator-v1';
+    const copyDigits = [...'𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'];
     const weekCards = document.getElementById('weekCards');
     let visibleWeekCount = 1;
 
@@ -258,9 +261,6 @@
           <label class="field-label">Clock out
             <input class="end" type="time" aria-label="Week ${weekNumber}, ${day}, period ${number} clock out">
           </label>
-          <label class="field-label">Unpaid break
-            <input class="break" type="number" min="0" max="240" step="5" value="0" aria-label="Week ${weekNumber}, ${day}, period ${number} unpaid break minutes">
-          </label>
           <button class="remove-period" type="button"${index === 0 ? ' hidden' : ''}>Remove</button>
         </div>`;
     }
@@ -271,8 +271,11 @@
           <td class="day-cell">${day}<span class="date"></span></td>
           <td>
             <div class="periods">${periodMarkup(day, 0, weekNumber)}</div>
-            <button class="add-period" type="button">+ Add period</button>
-            <span class="period-limit">1 of ${maxPeriods}</span>
+            <div class="period-actions">
+              <button class="add-period" type="button">+ Add period</button>
+              <span class="period-limit">1 of ${maxPeriods}</span>
+              <button class="copy-hours" type="button" disabled aria-label="Copy ${day} hours">Copy hours</button>
+            </div>
           </td>
           <td class="hours">0.00</td>
           <td class="day-status">—</td>
@@ -323,7 +326,6 @@
         period.querySelector('.period-number').textContent = `Period ${index + 1}`;
         period.querySelector('.start').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock in`);
         period.querySelector('.end').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock out`);
-        period.querySelector('.break').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} unpaid break minutes`);
         period.querySelector('.remove-period').hidden = index === 0;
       });
 
@@ -419,8 +421,7 @@
           days: [...card.querySelectorAll('tr[data-day]')].map(row => ({
             periods: [...row.querySelectorAll('.period')].map(period => ({
               start: period.querySelector('.start').value,
-              end: period.querySelector('.end').value,
-              breakMinutes: period.querySelector('.break').value
+              end: period.querySelector('.end').value
             }))
           }))
         }))
@@ -461,9 +462,6 @@
             const savedPeriod = savedPeriods[periodIndex] || {};
             period.querySelector('.start').value = typeof savedPeriod.start === 'string' ? savedPeriod.start : '';
             period.querySelector('.end').value = typeof savedPeriod.end === 'string' ? savedPeriod.end : '';
-            period.querySelector('.break').value = typeof savedPeriod.breakMinutes === 'string' || typeof savedPeriod.breakMinutes === 'number'
-              ? savedPeriod.breakMinutes
-              : '0';
           });
           refreshPeriodControls(row);
         });
@@ -473,6 +471,60 @@
       const restoredWeekCount = Number(saved.visibleWeekCount);
       setVisibleWeekCount(Number.isFinite(restoredWeekCount) ? restoredWeekCount : 1);
       return true;
+    }
+
+    function getCopyText(row) {
+      const periods = [...row.querySelectorAll('.period')].map(period => ({
+        start: period.querySelector('.start').value,
+        end: period.querySelector('.end').value
+      }));
+      const enteredPeriods = periods.filter(period => period.start || period.end);
+      if (enteredPeriods.length === 0 || enteredPeriods.some(period => !period.start || !period.end)) return '';
+
+      const formatTime = value => {
+        const [hours, minutes] = value.split(':').map(Number);
+        return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')}`
+          .replace(/\d/g, digit => copyDigits[Number(digit)]);
+      };
+
+      return enteredPeriods
+        .sort((a, b) => toMins(a.start) - toMins(b.start))
+        .map(period => `${formatTime(period.start)}-${formatTime(period.end)}`)
+        .join('&&');
+    }
+
+    function updateCopyHours(row) {
+      const button = row.querySelector('.copy-hours');
+      const copyText = getCopyText(row);
+      button.dataset.copyText = copyText;
+      button.disabled = !copyText;
+      button.title = copyText;
+    }
+
+    async function copyHours(button) {
+      const copyText = button.dataset.copyText;
+      if (!copyText) return;
+
+      try {
+        await navigator.clipboard.writeText(copyText);
+      } catch {
+        const textArea = document.createElement('textarea');
+        textArea.value = copyText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+
+      button.textContent = 'Copied!';
+      button.classList.add('copied');
+      setTimeout(() => {
+        if (!button.isConnected) return;
+        button.textContent = 'Copy hours';
+        button.classList.remove('copied');
+      }, 1200);
     }
 
     function checkWeek(card, sortBeforeCheck = false) {
@@ -494,12 +546,12 @@
         let completePeriods = 0;
         let dayHasError = false;
         let dayHasWarning = false;
+        const completePeriodData = [];
 
         [...row.querySelectorAll('.period')].forEach((period, index) => {
           const periodNumber = index + 1;
           const start = toMins(period.querySelector('.start').value);
           const end = toMins(period.querySelector('.end').value);
-          const breakMinutes = Number(period.querySelector('.break').value || 0);
 
           if (start === null && end === null) return;
 
@@ -512,28 +564,41 @@
           let elapsed = end - start;
           if (elapsed <= 0) elapsed += 1440;
 
-          if (breakMinutes < 0 || breakMinutes > elapsed) {
-            dayHasError = true;
-            errors.push(`${day}, period ${periodNumber}: the break must fit within the clocked period.`);
-            return;
-          }
-
-          const paid = (elapsed - breakMinutes) / 60;
+          const paid = elapsed / 60;
           dailyTotal += paid;
           completePeriods += 1;
-
-          if (elapsed > 360 && breakMinutes < 30) {
-            dayHasError = true;
-            errors.push(`${day}, period ${periodNumber}: a period longer than 6 hours needs a 30-minute break.`);
-          } else if (elapsed >= 330 && breakMinutes < 30) {
-            dayHasWarning = true;
-            warnings.push(`${day}, period ${periodNumber}: ${Math.floor(elapsed / 60)}h ${String(elapsed % 60).padStart(2, '0')}m without a 30-minute break.`);
-          }
+          completePeriodData.push({ periodNumber, start, end: start + elapsed });
         });
+
+        let hasThirtyMinuteBreak = false;
+        let hasOverlap = false;
+        completePeriodData
+          .sort((a, b) => a.start - b.start || a.periodNumber - b.periodNumber)
+          .forEach((period, index, sortedPeriods) => {
+            if (index === 0) return;
+            const gap = period.start - sortedPeriods[index - 1].end;
+            if (gap < 0) {
+              hasOverlap = true;
+              dayHasError = true;
+              errors.push(`${day}: periods ${sortedPeriods[index - 1].periodNumber} and ${period.periodNumber} overlap.`);
+            } else if (gap >= 30) {
+              hasThirtyMinuteBreak = true;
+            }
+          });
+
+        const dailyMinutes = Math.round(dailyTotal * 60);
+        if (!hasOverlap && dailyMinutes > 360 && !hasThirtyMinuteBreak) {
+          dayHasError = true;
+          errors.push(`${day}: ${Math.floor(dailyMinutes / 60)}h ${String(dailyMinutes % 60).padStart(2, '0')}m worked without a 30-minute break between periods.`);
+        } else if (!hasOverlap && dailyMinutes >= 330 && !hasThirtyMinuteBreak) {
+          dayHasWarning = true;
+          warnings.push(`${day}: ${Math.floor(dailyMinutes / 60)}h ${String(dailyMinutes % 60).padStart(2, '0')}m worked without a 30-minute break between periods.`);
+        }
 
         if (completePeriods > 0) workedDays += 1;
         weeklyTotal += dailyTotal;
         hoursCell.textContent = fmt(dailyTotal);
+        updateCopyHours(row);
 
         if (dailyTotal > 8) {
           dayHasError = true;
@@ -597,6 +662,9 @@
 
       const removeButton = event.target.closest('.remove-period');
       if (removeButton) removePeriod(removeButton);
+
+      const copyButton = event.target.closest('.copy-hours');
+      if (copyButton) copyHours(copyButton);
 
       const checkButton = event.target.closest('.check-week');
       if (checkButton) {

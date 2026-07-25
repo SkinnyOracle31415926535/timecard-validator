@@ -1,6 +1,6 @@
 # Timecard Validator
 
-A small, dependency-free timecard validator for up to four consecutive Saturday–Friday workweeks. Each day supports up to three clock-in/out periods, with an optional unpaid break for every period. Periods automatically sort by clock-in time after you finish editing a day. Your entries are saved automatically in this browser and restored when you reopen the app.
+A small, dependency-free timecard validator for up to four consecutive Saturday–Friday workweeks. Each day supports up to three clock-in/out periods. Gaps between periods are checked for a 30-minute break, and each day's periods can be copied in a compact paste-ready format. Periods automatically sort by clock-in time after you finish editing a day. Your entries are saved automatically in this browser and restored when you reopen the app.
 
 ## Live page
 
@@ -15,7 +15,7 @@ On iPhone or iPad, open the live page in Safari, choose **Share**, then choose *
 - Up to 40 paid hours per week
 - Up to 8 paid hours per day
 - At least one day off in each Saturday–Friday workweek
-- A warning for periods from 5½ through 6 hours with less than a 30-minute unpaid break
-- An error for periods longer than 6 hours with less than a 30-minute unpaid break
+- A warning for days from 5½ through 6 worked hours without a 30-minute gap between periods
+- An error for days longer than 6 worked hours without a 30-minute gap between periods
 
 Everything runs locally in the browser. No entered schedule data is uploaded or stored.
