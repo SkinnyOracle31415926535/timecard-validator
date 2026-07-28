@@ -82,19 +82,71 @@
     value.visibleWeekCount <= MAX_WEEKS
   );
 
-  const isState = value => (
-    exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks']) &&
-    value.version === 1 &&
-    isWorkspaceValue({
-      weekStart: value.weekStart,
-      weeks: value.weeks,
-    }) &&
-    isViewValue({ visibleWeekCount: value.visibleWeekCount })
-  );
+  const stateValidationReason = value => {
+    if (!plainObject(value)) return 'the root must be a JSON object.';
+    if (!exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks'])) {
+      return 'the root fields must be exactly version, weekStart, visibleWeekCount, and weeks.';
+    }
+    if (value.version !== 1) return 'version must be 1.';
+    if (typeof value.weekStart !== 'string') return 'weekStart must be a string.';
+    if (!validSaturday(value.weekStart)) {
+      return 'weekStart must be empty or a real Saturday in YYYY-MM-DD format.';
+    }
+    if (!Number.isSafeInteger(value.visibleWeekCount) ||
+        value.visibleWeekCount < 1 || value.visibleWeekCount > MAX_WEEKS) {
+      return 'visibleWeekCount must be an integer from 1 through 4.';
+    }
+    if (!Array.isArray(value.weeks) || value.weeks.length !== MAX_WEEKS) {
+      return 'weeks must be an array with exactly 4 entries.';
+    }
+
+    for (let weekIndex = 0; weekIndex < value.weeks.length; weekIndex += 1) {
+      const week = value.weeks[weekIndex];
+      if (!plainObject(week) || !exactKeys(week, ['days'])) {
+        return `week ${weekIndex + 1} must contain only the days field.`;
+      }
+      if (!Array.isArray(week.days) || week.days.length !== DAYS_PER_WEEK) {
+        return `week ${weekIndex + 1} days must be an array with exactly 7 entries.`;
+      }
+
+      for (let dayIndex = 0; dayIndex < week.days.length; dayIndex += 1) {
+        const day = week.days[dayIndex];
+        if (!plainObject(day) || !exactKeys(day, ['periods'])) {
+          return `week ${weekIndex + 1}, day ${dayIndex + 1} must contain only the periods field.`;
+        }
+        if (!Array.isArray(day.periods) ||
+            day.periods.length < 1 || day.periods.length > MAX_PERIODS) {
+          return `week ${weekIndex + 1}, day ${dayIndex + 1} periods must be an array with 1 through 3 entries.`;
+        }
+
+        for (let periodIndex = 0; periodIndex < day.periods.length; periodIndex += 1) {
+          const period = day.periods[periodIndex];
+          const location =
+            `week ${weekIndex + 1}, day ${dayIndex + 1}, period ${periodIndex + 1}`;
+          if (!plainObject(period) || !exactKeys(period, ['start', 'end'])) {
+            return `${location} must contain only the start and end fields.`;
+          }
+          if (typeof period.start !== 'string' || typeof period.end !== 'string') {
+            return `${location} start and end must be strings.`;
+          }
+          if (!validTime(period.start) || !validTime(period.end)) {
+            return `${location} times must be empty or use 24-hour HH:MM format.`;
+          }
+        }
+      }
+    }
+    return '';
+  };
+
+  const isState = value => stateValidationReason(value) === '';
 
   const assertState = value => {
-    if (!isState(value)) {
-      throw new Error('The saved timecard has an invalid format. Download its raw backup before making changes.');
+    const reason = stateValidationReason(value);
+    if (reason) {
+      throw new Error(
+        `The saved timecard has an invalid format. Reason: ${reason} ` +
+        'Download its raw backup before making changes.'
+      );
     }
     return value;
   };
