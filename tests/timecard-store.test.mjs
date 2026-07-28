@@ -144,6 +144,48 @@ test('strict validation rejects malformed, expanded, and semantically invalid st
   assert.equal(store.isViewValue({ visibleWeekCount: 1, extra: true }), false);
 });
 
+test('invalid-state diagnostics identify only structure, type, or range failures', () => {
+  const makeState = () => loadStore().store.defaultState('2026-07-25');
+  const diagnosticFor = candidate => {
+    const raw = JSON.stringify(candidate);
+    const { storage, store } = loadStore(raw);
+    const inspected = store.inspect();
+    assert.equal(inspected.status, 'invalid');
+    assert.equal(storage.values.get(store.storageKey), raw);
+    assert.equal(storage.setCalls.length, 0);
+    return inspected.error.message;
+  };
+
+  const wrongVersion = makeState();
+  wrongVersion.version = 999;
+  const versionMessage = diagnosticFor(wrongVersion);
+  assert.match(versionMessage, /Reason: version must be 1\./);
+  assert.equal(versionMessage.includes('999'), false);
+
+  const wrongWeekCount = makeState();
+  wrongWeekCount.weeks.pop();
+  assert.match(
+    diagnosticFor(wrongWeekCount),
+    /Reason: weeks must be an array with exactly 4 entries\./
+  );
+
+  const privateExtraField = makeState();
+  privateExtraField.private_saved_note = 'do not reveal this';
+  const fieldsMessage = diagnosticFor(privateExtraField);
+  assert.match(fieldsMessage, /Reason: the root fields must be exactly/);
+  assert.equal(fieldsMessage.includes('private_saved_note'), false);
+  assert.equal(fieldsMessage.includes('do not reveal this'), false);
+
+  const invalidSavedTime = makeState();
+  invalidSavedTime.weeks[0].days[0].periods[0].start = 'PRIVATE-TIME-VALUE';
+  const timeMessage = diagnosticFor(invalidSavedTime);
+  assert.match(
+    timeMessage,
+    /Reason: week 1, day 1, period 1 times must be empty or use 24-hour HH:MM format\./
+  );
+  assert.equal(timeMessage.includes('PRIVATE-TIME-VALUE'), false);
+});
+
 test('invalid JSON is preserved byte-for-byte and cannot be overwritten', async () => {
   const corruptRaw = '{"version":1';
   const { storage, store } = loadStore(corruptRaw);
