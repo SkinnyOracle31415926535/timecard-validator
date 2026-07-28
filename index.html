@@ -765,7 +765,10 @@
     }
 
     if (!restoreState()) {
-      document.getElementById('todayBtn').click();
+      const inspected = timecardStore && timecardStore.inspect();
+      if (!inspected || inspected.status !== 'legacy') {
+        document.getElementById('todayBtn').click();
+      }
       setVisibleWeekCount(1);
     }
   </script>

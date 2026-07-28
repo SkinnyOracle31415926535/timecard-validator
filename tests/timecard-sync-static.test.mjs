@@ -27,15 +27,34 @@ test('the page loads one strict store, one public client, and one Timecard adapt
   assert.equal(index.includes('shared-state'), false);
 });
 
-test('only the two audited fixed Timecard records are registered', () => {
-  assert.equal((sync.match(/client\.register\(/g) || []).length, 2);
+test('current mode registers two records and legacy mode registers only its recovery record', () => {
+  assert.equal((sync.match(/client\.register\(/g) || []).length, 3);
   assert.match(sync, /collection: 'timecards',\s+recordId: 'current',\s+schemaVersion: 1/);
   assert.match(sync, /collection: 'preferences',\s+recordId: 'view',\s+schemaVersion: 1/);
-  assert.equal((sync.match(/scope: APP_ID/g) || []).length, 2);
-  assert.equal((sync.match(/appId: APP_ID/g) || []).length, 4);
+  assert.match(sync, /collection: 'recovery',\s+recordId: 'manual-break-v1',\s+schemaVersion: 1/);
+  assert.match(
+    sync,
+    /if \(recoveryMode\) {\s+await client\.register\(recoveryAdapter\);\s+} else {\s+workspaceHandle = await client\.register\(workspaceAdapter\);\s+viewHandle = await client\.register\(viewAdapter\);/
+  );
+  assert.equal((sync.match(/scope: APP_ID/g) || []).length, 3);
+  assert.equal((sync.match(/appId: APP_ID/g) || []).length, 5);
   assert.equal(sync.includes('registerGlobalTheme'), false);
   assert.equal(sync.includes("scope: 'global'"), false);
   assert.equal(sync.includes('theme'), false);
+});
+
+test('legacy recovery is read-only toward browser storage and rejects remote application', () => {
+  const recoveryBlock = sync.slice(
+    sync.indexOf('const recoveryAdapter ='),
+    sync.indexOf('const invalidatePreview =')
+  );
+  assert.match(recoveryBlock, /validate: value => store\.isLegacyState\(value\)/);
+  assert.match(recoveryBlock, /readLocal: \(\) => store\.readLegacy\(\) \|\| undefined/);
+  assert.match(recoveryBlock, /JSON\.stringify\(local\) !== JSON\.stringify\(value\)/);
+  assert.match(recoveryBlock, /Synchronized manual-break recovery data cannot be applied/);
+  assert.equal(recoveryBlock.includes('localStorage'), false);
+  assert.equal(recoveryBlock.includes('store.write'), false);
+  assert.equal(recoveryBlock.includes('store.apply'), false);
 });
 
 test('local writes are locked, source-tagged, and never patch native Storage', () => {
@@ -56,17 +75,38 @@ test('corrupt startup is fail-closed and the exact raw-value backup remains avai
   assert.match(store, /raw_value: raw/);
   assert.match(sync, /store\.rawBackup\(\)/);
   assert.match(sync, /Raw local backup remains available/);
+  assert.match(index, /if \(!inspected \|\| inspected\.status !== 'legacy'\) {\s+document\.getElementById\('todayBtn'\)\.click\(\);/);
 });
 
 test('migration requires a downloaded backup, a zero-write preview, and explicit choices', () => {
   assert.match(sync, /downloadRawBackup\(\);\s+await ready;\s+const result = await client\.previewMigration/);
-  assert.match(sync, /sourceKey: 'timecard-validator-browser-v1'/);
+  assert.match(sync, /'timecard-validator-manual-break-recovery-v1'/);
+  assert.match(sync, /'timecard-validator-browser-v1'/);
+  assert.match(sync, /sourceKey: SOURCE_KEY/);
   assert.match(sync, /previewResult\.preview\.writesPerformed !== 0/);
   assert.match(sync, /select\[data-record-key\]/);
   assert.match(sync, /client\.applyMigration\(previewResult\.plan, resolutions\)/);
   assert.match(sync, /Preview confirmed: 0 writes performed\./);
   assert.match(sync, /previewResult\.preview\.remoteCount > 0/);
   assert.match(sync, /First-device migration is blocked because synchronized Timecard data already exists/);
+});
+
+test('legacy recovery fails closed on all existing remote data', () => {
+  assert.match(sync, /if \(recoveryMode && item\.remoteRevision > 0\)/);
+  assert.match(sync, /Synchronized recovery data cannot be applied over this local legacy record/);
+  assert.match(sync, /if \(!recoveryMode && item\.current && !item\.current\.deleted\)/);
+  assert.match(sync, /Recovery upload is blocked because synchronized recovery data already exists/);
+  assert.match(sync, /previewResult\.preview\.remoteCount > 0/);
+  assert.match(sync, /previewResult\.preview\.orphanedCount > 0/);
+  assert.match(sync, /Recovery is blocked by preserved metadata from another Timecard adapter/);
+});
+
+test('legacy UI labels recovery clearly and keeps current sync unavailable', () => {
+  assert.match(sync, /Legacy manual-break data is preserved unchanged for recovery/);
+  assert.match(sync, /Current Timecard sync remains unavailable until it is resolved separately/);
+  assert.match(sync, /openButton\.textContent = recoveryMode \? 'Recovery & backup'/);
+  assert.match(sync, /mode: recoveryMode \? 'manual-break-recovery' : 'current'/);
+  assert.match(sync, /const MANIFEST_VERSION = recoveryMode \? 2 : 1/);
 });
 
 test('remote changes defer while a date or time editor has focus', () => {

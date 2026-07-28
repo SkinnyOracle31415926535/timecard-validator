@@ -2,8 +2,16 @@
   'use strict';
 
   const APP_ID = 'timecard-validator';
-  const MANIFEST_VERSION = 1;
   const store = window.TimecardStore;
+  const initialInspection = store && store.inspect();
+  const recoveryMode = Boolean(initialInspection && initialInspection.status === 'legacy');
+  const MANIFEST_VERSION = recoveryMode ? 2 : 1;
+  const SOURCE_KEY = recoveryMode
+    ? 'timecard-validator-manual-break-recovery-v1'
+    : 'timecard-validator-browser-v1';
+  const RECOVERY_NOTICE =
+    'Legacy manual-break data is preserved unchanged for recovery. ' +
+    'Current Timecard sync remains unavailable until it is resolved separately.';
   const timecardLink = document.querySelector('.timecard-link');
 
   if (!document.body || !timecardLink) return;
@@ -12,7 +20,7 @@
   openButton.type = 'button';
   openButton.className = 'timecard-sync-open';
   openButton.dataset.state = 'disconnected';
-  openButton.textContent = 'Sync & backup';
+  openButton.textContent = recoveryMode ? 'Recovery & backup' : 'Sync & backup';
   timecardLink.insertAdjacentElement('afterend', openButton);
 
   const dialog = document.createElement('dialog');
@@ -29,8 +37,12 @@
           aria-label="Close sync and backup window">×</button>
       </div>
       <p class="timecard-sync-copy">
-        Your current four-week timecard and its visible-week preference can sync between
-        Ryan’s browsers. Entries still save in this browser first.
+        ${recoveryMode
+          ? 'Legacy manual-break Timecard data is preserved unchanged for recovery. ' +
+            'It can be uploaded only after a raw backup, a zero-write preview, and explicit apply. ' +
+            'Current Timecard sync remains unavailable until this data is resolved separately.'
+          : 'Your current four-week timecard and its visible-week preference can sync between ' +
+            'Ryan’s browsers. Entries still save in this browser first.'}
       </p>
       <p class="timecard-sync-safety">
         Only <code>timecard-validator-v1</code> is read. Other browser storage is never
@@ -111,6 +123,7 @@
   let initialized = false;
   let conflictRender = 0;
   let restoreFocus = null;
+  let initializationError = '';
 
   const stateLabels = {
     disconnected: 'Disconnected',
@@ -223,6 +236,35 @@
     },
   };
 
+  const recoveryAdapter = {
+    scope: APP_ID,
+    appId: APP_ID,
+    collection: 'recovery',
+    recordId: 'manual-break-v1',
+    schemaVersion: 1,
+    validate: value => store.isLegacyState(value),
+    readLocal: () => store.readLegacy() || undefined,
+    writeLocal: (value, metadata) => {
+      requireWriteSource(metadata);
+      if (metadata.deleted) {
+        throw new Error('The local manual-break recovery record cannot be deleted by synchronization.');
+      }
+      const local = store.readLegacy();
+      if (!local || !store.isLegacyState(value) ||
+          JSON.stringify(local) !== JSON.stringify(value)) {
+        throw new Error(
+          'The manual-break recovery record changed. Local browser data was not rewritten.'
+        );
+      }
+    },
+    applyRemote: (_value, metadata) => {
+      requireRemoteSource(metadata);
+      throw new Error(
+        'Synchronized manual-break recovery data cannot be applied to local Timecard data.'
+      );
+    },
+  };
+
   const invalidatePreview = () => {
     previewResult = null;
     review.hidden = true;
@@ -231,6 +273,7 @@
   };
 
   const stageLocalChanges = async detail => {
+    if (recoveryMode) return;
     await ready;
     if (detail.changed.includes('workspace')) {
       await workspaceHandle.save(store.workspaceValue(detail.state));
@@ -263,6 +306,7 @@
     const blocked = records.querySelector('[data-migration-blocked]');
     applyButton.disabled = Boolean(blocked)
       || previewResult.preview.remoteCount > 0
+      || previewResult.preview.orphanedCount > 0
       || required.some(select => !select.value);
   };
 
@@ -275,6 +319,16 @@
     status.className = 'timecard-sync-record-status';
     status.textContent = item.status.replaceAll('-', ' ');
     row.append(identity, status);
+
+    if (recoveryMode && item.remoteRevision > 0) {
+      const blocked = document.createElement('p');
+      blocked.dataset.migrationBlocked = '';
+      blocked.textContent =
+        'Synchronized recovery data cannot be applied over this local legacy record. ' +
+        'Local browser data remains unchanged.';
+      row.append(blocked);
+      return row;
+    }
 
     if (item.status === 'content-conflict') {
       const label = document.createElement('label');
@@ -330,9 +384,21 @@
     if (result.preview.remoteCount > 0) {
       const blocked = document.createElement('p');
       blocked.dataset.migrationBlocked = '';
-      blocked.textContent =
-        'First-device migration is blocked because synchronized Timecard data already exists. ' +
-        'Local timecard data was not changed.';
+      blocked.textContent = recoveryMode
+        ? 'Recovery upload is blocked because synchronized recovery data already exists. ' +
+          'Local legacy data was not changed.'
+        : 'First-device migration is blocked because synchronized Timecard data already exists. ' +
+          'Local timecard data was not changed.';
+      records.prepend(blocked);
+    }
+    if (result.preview.orphanedCount > 0) {
+      const blocked = document.createElement('p');
+      blocked.dataset.migrationBlocked = '';
+      blocked.textContent = recoveryMode
+        ? 'Recovery is blocked because this browser has preserved sync metadata from another ' +
+          'Timecard adapter. Local legacy data was not changed.'
+        : 'Migration is blocked because this browser has preserved data from a removed ' +
+          'Timecard adapter. Local timecard data was not changed.';
       records.prepend(blocked);
     }
     if (!result.preview.review.length) {
@@ -363,7 +429,7 @@
         ? item.current.revision
         : 0;
       const choices = [['Keep this device', 'keep-local']];
-      if (item.current && !item.current.deleted) {
+      if (!recoveryMode && item.current && !item.current.deleted) {
         choices.push(['Accept synchronized record', 'accept-remote']);
       }
       for (const [label, strategy] of choices) {
@@ -391,8 +457,11 @@
     openButton.dataset.state = mode;
     openButton.title = state && state.message || 'Open sync and backup';
     stateBox.dataset.state = mode;
-    stateLabel.textContent = stateLabels[mode] || mode;
-    stateMessage.textContent = state && state.message || 'Local timecard data remains on this device.';
+    stateLabel.textContent = recoveryMode
+      ? `Recovery ${String(stateLabels[mode] || mode).toLowerCase()}`
+      : stateLabels[mode] || mode;
+    const message = state && state.message || 'Local timecard data remains on this device.';
+    stateMessage.textContent = recoveryMode ? `${message} ${RECOVERY_NOTICE}` : message;
     connectButton.hidden = mode !== 'disconnected';
     syncButton.hidden = !['synced', 'offline', 'conflict'].includes(mode);
     previewButton.hidden = mode !== 'review';
@@ -423,6 +492,10 @@
     if (!store) throw new Error('The Timecard local data store did not load.');
     const inspected = store.inspect();
     if (inspected.status === 'invalid') throw inspected.error;
+    if ((recoveryMode && inspected.status !== 'legacy') ||
+        (!recoveryMode && inspected.status === 'legacy')) {
+      throw new Error('The local Timecard storage mode changed. Reload before continuing.');
+    }
     if (!window.RyanAppSync || typeof window.RyanAppSync.create !== 'function') {
       throw new Error('Ryan App Sync is unavailable. Raw local backup still works.');
     }
@@ -433,8 +506,12 @@
       showStatus: false,
     });
     client.onStateChange(showState);
-    workspaceHandle = await client.register(workspaceAdapter);
-    viewHandle = await client.register(viewAdapter);
+    if (recoveryMode) {
+      await client.register(recoveryAdapter);
+    } else {
+      workspaceHandle = await client.register(workspaceAdapter);
+      viewHandle = await client.register(viewAdapter);
+    }
     await client.finalizeRegistration();
     initialized = true;
     showState(client.getState());
@@ -442,8 +519,13 @@
   };
 
   const ready = initialize().catch(error => {
-    showAlert(error instanceof Error ? error.message : 'Ryan App Sync could not initialize.');
-    stateMessage.textContent = 'Raw local backup remains available; synchronization is unavailable.';
+    initializationError = error instanceof Error
+      ? error.message
+      : 'Ryan App Sync could not initialize.';
+    showAlert(initializationError);
+    stateMessage.textContent = recoveryMode
+      ? `Raw local backup remains available. ${RECOVERY_NOTICE}`
+      : 'Raw local backup remains available; synchronization is unavailable.';
     connectButton.hidden = true;
     syncButton.hidden = true;
     previewButton.hidden = true;
@@ -456,7 +538,10 @@
   openButton.addEventListener('click', () => {
     restoreFocus = document.activeElement;
     const storedError = store && store.getLastError();
-    showAlert(storedError ? storedError.message : '');
+    showAlert(recoveryMode
+      ? initializationError ||
+        'Legacy manual-break Timecard data was detected and preserved unchanged for recovery.'
+      : storedError ? storedError.message : '');
     if (!dialog.open) dialog.showModal();
     closeButton.focus();
   });
@@ -498,7 +583,7 @@
       downloadRawBackup();
       await ready;
       const result = await client.previewMigration({
-        sourceKey: 'timecard-validator-browser-v1',
+        sourceKey: SOURCE_KEY,
         downloadBackup: true,
       });
       renderPreview(result);
@@ -512,7 +597,16 @@
       }
       if (previewResult.preview.remoteCount > 0) {
         throw new Error(
-          'First-device migration is blocked because synchronized Timecard records already exist.'
+          recoveryMode
+            ? 'Recovery upload is blocked because synchronized recovery records already exist.'
+            : 'First-device migration is blocked because synchronized Timecard records already exist.'
+        );
+      }
+      if (previewResult.preview.orphanedCount > 0) {
+        throw new Error(
+          recoveryMode
+            ? 'Recovery is blocked by preserved metadata from another Timecard adapter.'
+            : 'Migration is blocked by preserved data from a removed Timecard adapter.'
         );
       }
       const resolutions = {};
@@ -547,6 +641,7 @@
   window.TimecardSync = Object.freeze({
     appId: APP_ID,
     manifestVersion: MANIFEST_VERSION,
+    mode: recoveryMode ? 'manual-break-recovery' : 'current',
     ready,
     open: () => openButton.click(),
     rawBackup: () => store.rawBackup(),
