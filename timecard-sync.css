@@ -1,0 +1,265 @@
+.timecard-sync-open {
+  position: relative;
+  margin: 0 0 14px 8px;
+  padding-left: 24px;
+  vertical-align: top;
+}
+
+.timecard-sync-open::before {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #333;
+  border-radius: 50%;
+  background: #999;
+  content: "";
+  transform: translateY(-50%);
+}
+
+.timecard-sync-open[data-state="review"]::before { background: #f0c929; }
+.timecard-sync-open[data-state="syncing"]::before { background: #36a8e0; }
+.timecard-sync-open[data-state="synced"]::before { background: #19a141; }
+.timecard-sync-open[data-state="offline"]::before { background: #e88b2f; }
+.timecard-sync-open[data-state="conflict"]::before { background: #d83232; }
+
+.timecard-sync-dialog {
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  padding: 0;
+  border: 2px solid;
+  border-color: #fff #111 #111 #fff;
+  color: #111;
+  background: #c0c0c0;
+  box-shadow: 4px 4px 0 #444;
+  font: 14px "MS Sans Serif", Tahoma, Arial, sans-serif;
+}
+
+.timecard-sync-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.timecard-sync-window {
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.timecard-sync-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -8px -8px 0;
+  padding: 6px 7px;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+
+.timecard-sync-kicker {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+}
+
+.timecard-sync-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.timecard-sync-close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 2px outset #fff;
+  color: #111;
+  background: #c0c0c0;
+  font: bold 18px/1 Arial, sans-serif;
+}
+
+.timecard-sync-copy,
+.timecard-sync-safety,
+.timecard-sync-footnote,
+.timecard-sync-review p,
+.timecard-sync-conflicts p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.timecard-sync-safety {
+  padding: 8px;
+  border: 2px inset #fff;
+  background: #e7e7e7;
+  font-size: 12px;
+}
+
+.timecard-sync-safety code {
+  overflow-wrap: anywhere;
+  font: 12px "Courier New", monospace;
+}
+
+.timecard-sync-state {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 2px inset #fff;
+  border-left: 7px solid #777;
+  background: #fff;
+}
+
+.timecard-sync-state[data-state="review"] { border-left-color: #bd9200; }
+.timecard-sync-state[data-state="syncing"] { border-left-color: #167aae; }
+.timecard-sync-state[data-state="synced"] { border-left-color: #167c30; }
+.timecard-sync-state[data-state="offline"] { border-left-color: #b95e18; }
+.timecard-sync-state[data-state="conflict"] { border-left-color: #a92121; }
+.timecard-sync-state span { color: #444; font-size: 12px; }
+
+.timecard-sync-alert {
+  margin: 0;
+  padding: 8px 10px;
+  border: 2px solid #8b0000;
+  color: #720000;
+  background: #fff0f0;
+  font-weight: bold;
+  line-height: 1.4;
+}
+
+.timecard-sync-actions,
+.timecard-sync-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timecard-sync-actions button,
+.timecard-sync-review > button,
+.timecard-sync-conflict-actions button {
+  min-width: 120px;
+  padding: 6px 9px;
+  border: 2px outset #fff;
+  color: #111;
+  background: #c0c0c0;
+  font: bold 13px "MS Sans Serif", Tahoma, Arial, sans-serif;
+}
+
+.timecard-sync-actions button.is-primary,
+.timecard-sync-review > button.is-primary {
+  color: #fff;
+  border-color: #69a6d8 #00004f #00004f #69a6d8;
+  background: #000080;
+}
+
+.timecard-sync-actions button:disabled,
+.timecard-sync-review > button:disabled,
+.timecard-sync-conflict-actions button:disabled {
+  color: #666;
+  cursor: not-allowed;
+}
+
+.timecard-sync-review,
+.timecard-sync-conflicts {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 2px groove #fff;
+  background: #dedede;
+}
+
+.timecard-sync-review[hidden],
+.timecard-sync-conflicts[hidden] {
+  display: none;
+}
+
+.timecard-sync-review h3,
+.timecard-sync-conflicts h3 {
+  margin: 0;
+  color: #000080;
+  font-size: 15px;
+}
+
+.timecard-sync-zero-write[data-safe="true"] {
+  color: #087000;
+  font-weight: bold;
+}
+
+.timecard-sync-zero-write[data-safe="false"] {
+  color: #b00020;
+  font-weight: bold;
+}
+
+.timecard-sync-records,
+.timecard-sync-conflict-list {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.timecard-sync-record,
+.timecard-sync-conflict {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #777;
+  overflow-wrap: anywhere;
+  background: #fff;
+  font-size: 12px;
+}
+
+.timecard-sync-record-status {
+  color: #555;
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+.timecard-sync-record label {
+  display: grid;
+  gap: 4px;
+  font-weight: bold;
+}
+
+.timecard-sync-record select {
+  width: 100%;
+  padding: 5px;
+  border: 2px inset #fff;
+  background: #fff;
+  font: inherit;
+}
+
+.timecard-sync-footnote {
+  color: #444;
+  font-size: 11px;
+}
+
+@media (max-width: 600px) {
+  .timecard-sync-open {
+    display: block;
+    margin-left: 0;
+  }
+
+  .timecard-sync-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .timecard-sync-actions button,
+  .timecard-sync-review > button {
+    width: 100%;
+  }
+}
+
+@media print {
+  .timecard-sync-open,
+  .timecard-sync-dialog {
+    display: none !important;
+  }
+}
