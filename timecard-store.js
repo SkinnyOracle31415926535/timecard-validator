@@ -30,6 +30,19 @@
     /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)
   );
 
+  const validLegacyBreakMinutes = value => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) && !Object.is(value, -0) &&
+        value >= 0 && value <= 240;
+    }
+    if (typeof value !== 'string') return false;
+    if (value === '') return true;
+    if (value.length > 32) return false;
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) return false;
+    const minutes = Number(value);
+    return Number.isFinite(minutes) && minutes >= 0 && minutes <= 240;
+  };
+
   const validSaturday = value => {
     if (value === '') return true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -82,7 +95,7 @@
     value.visibleWeekCount <= MAX_WEEKS
   );
 
-  const stateValidationReason = value => {
+  const stateValidationReason = (value, { manualBreaks = false } = {}) => {
     if (!plainObject(value)) return 'the root must be a JSON object.';
     if (!exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks'])) {
       return 'the root fields must be exactly version, weekStart, visibleWeekCount, and weeks.';
@@ -123,14 +136,22 @@
           const period = day.periods[periodIndex];
           const location =
             `week ${weekIndex + 1}, day ${dayIndex + 1}, period ${periodIndex + 1}`;
-          if (!plainObject(period) || !exactKeys(period, ['start', 'end'])) {
-            return `${location} must contain only the start and end fields.`;
+          const periodFields = manualBreaks
+            ? ['start', 'end', 'breakMinutes']
+            : ['start', 'end'];
+          if (!plainObject(period) || !exactKeys(period, periodFields)) {
+            return manualBreaks
+              ? `${location} must contain only the start, end, and breakMinutes fields.`
+              : `${location} must contain only the start and end fields.`;
           }
           if (typeof period.start !== 'string' || typeof period.end !== 'string') {
             return `${location} start and end must be strings.`;
           }
           if (!validTime(period.start) || !validTime(period.end)) {
             return `${location} times must be empty or use 24-hour HH:MM format.`;
+          }
+          if (manualBreaks && !validLegacyBreakMinutes(period.breakMinutes)) {
+            return `${location} breakMinutes must be an empty or numeric string up to 32 characters, or a number, from 0 through 240.`;
           }
         }
       }
@@ -139,12 +160,26 @@
   };
 
   const isState = value => stateValidationReason(value) === '';
+  const isLegacyState = value => (
+    stateValidationReason(value, { manualBreaks: true }) === ''
+  );
 
   const assertState = value => {
     const reason = stateValidationReason(value);
     if (reason) {
       throw new Error(
         `The saved timecard has an invalid format. Reason: ${reason} ` +
+        'Download its raw backup before making changes.'
+      );
+    }
+    return value;
+  };
+
+  const assertLegacyState = value => {
+    const reason = stateValidationReason(value, { manualBreaks: true });
+    if (reason) {
+      throw new Error(
+        `The legacy manual-break timecard has an invalid format. Reason: ${reason} ` +
         'Download its raw backup before making changes.'
       );
     }
@@ -174,18 +209,26 @@
     weeks: Array.from({ length: MAX_WEEKS }, emptyWeek),
   });
 
-  const parseRaw = raw => {
+  const parseJsonRaw = raw => {
     if (raw === null) return null;
-    let parsed;
     try {
-      parsed = JSON.parse(raw);
+      return JSON.parse(raw);
     } catch {
       throw new Error('The saved timecard is not valid JSON. Download its raw backup before making changes.');
     }
-    return clone(assertState(parsed));
+  };
+
+  const parseRaw = raw => {
+    const parsed = parseJsonRaw(raw);
+    return parsed === null ? null : clone(assertState(parsed));
   };
 
   const readUnlocked = () => parseRaw(root.localStorage.getItem(STORAGE_KEY));
+
+  const readLegacy = () => {
+    const parsed = parseJsonRaw(root.localStorage.getItem(STORAGE_KEY));
+    return parsed === null ? null : clone(assertLegacyState(parsed));
+  };
 
   const workspaceValue = state => {
     assertState(state);
@@ -321,7 +364,18 @@
     try {
       raw = root.localStorage.getItem(STORAGE_KEY);
       if (raw === null) return { status: 'missing', raw: null, state: null, error: null };
-      const state = parseRaw(raw);
+      const parsed = parseJsonRaw(raw);
+      if (isLegacyState(parsed)) {
+        lastError = null;
+        return {
+          status: 'legacy',
+          raw,
+          state: null,
+          legacyState: clone(parsed),
+          error: null,
+        };
+      }
+      const state = clone(assertState(parsed));
       lastError = null;
       return { status: 'valid', raw, state, error: null };
     } catch (error) {
@@ -378,8 +432,10 @@
     workspaceValue,
     viewValue,
     isState,
+    isLegacyState,
     isWorkspaceValue,
     isViewValue,
+    readLegacy,
     applyWorkspace,
     applyView,
     getLastError: () => lastError,

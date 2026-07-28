@@ -70,6 +70,18 @@ function loadStore(raw) {
 
 const jsonClone = value => JSON.parse(JSON.stringify(value));
 
+const legacyState = (store, breakMinutes = '30') => {
+  const state = store.defaultState('2026-07-25');
+  state.weeks.forEach(week => {
+    week.days.forEach(day => {
+      day.periods.forEach(period => {
+        period.breakMinutes = breakMinutes;
+      });
+    });
+  });
+  return state;
+};
+
 test('default state and both fixed adapter values use the strict version-1 schema', () => {
   const { store } = loadStore();
   const state = store.defaultState('2026-07-25');
@@ -86,6 +98,90 @@ test('default state and both fixed adapter values use the strict version-1 schem
   );
   assert.deepEqual(Object.keys(store.workspaceValue(state)).sort(), ['weekStart', 'weeks']);
   assert.deepEqual(jsonClone(store.viewValue(state)), { visibleWeekCount: 1 });
+});
+
+test('the exact historical manual-break schema is detected without rewriting raw bytes', async () => {
+  const template = loadStore().store;
+  const legacy = legacyState(template, '35');
+  legacy.weeks[0].days[0].periods[0].breakMinutes = 20;
+  const raw = JSON.stringify(legacy, null, 2);
+  const { storage, store } = loadStore(raw);
+
+  const inspected = store.inspect();
+  assert.equal(inspected.status, 'legacy');
+  assert.equal(inspected.raw, raw);
+  assert.equal(inspected.state, null);
+  assert.equal(store.isLegacyState(inspected.legacyState), true);
+  assert.equal(store.isState(inspected.legacyState), false);
+  assert.deepEqual(jsonClone(store.readLegacy()), jsonClone(legacy));
+  assert.throws(() => store.read(), /must contain only the start and end fields/);
+  assert.equal(storage.values.get(store.storageKey), raw);
+  assert.equal(storage.setCalls.length, 0);
+
+  await assert.rejects(
+    store.write(store.defaultState('2026-07-25'), { source: 'local' }),
+    /must contain only the start and end fields/
+  );
+  assert.equal(storage.values.get(store.storageKey), raw);
+  assert.equal(storage.setCalls.length, 0);
+});
+
+test('legacy manual-break detection rejects exact-schema near misses', () => {
+  const { store } = loadStore();
+  for (const validBreak of ['', '0', '30', '30.5', '.5', '1e2', 0, 30.5, 240]) {
+    assert.equal(store.isLegacyState(legacyState(store, validBreak)), true);
+  }
+  const invalidBreaks = [
+    -1, -0, 241, Number.NaN, Number.POSITIVE_INFINITY,
+    '-1', '241', ' 30', '30 ', '0x10', '30 minutes', '0'.repeat(33),
+    true, null, {}, [],
+  ];
+
+  for (const invalidBreak of invalidBreaks) {
+    const candidate = legacyState(store);
+    candidate.weeks[0].days[0].periods[0].breakMinutes = invalidBreak;
+    assert.equal(store.isLegacyState(candidate), false);
+  }
+
+  const missingBreak = legacyState(store);
+  delete missingBreak.weeks[0].days[0].periods[0].breakMinutes;
+  assert.equal(store.isLegacyState(missingBreak), false);
+
+  const extraPeriodField = legacyState(store);
+  extraPeriodField.weeks[0].days[0].periods[0].privateNote = 'private';
+  assert.equal(store.isLegacyState(extraPeriodField), false);
+
+  const current = store.defaultState('2026-07-25');
+  assert.equal(store.isLegacyState(current), false);
+});
+
+test('legacy diagnostics never reveal saved times or break values', () => {
+  const template = loadStore().store;
+  const legacy = legacyState(template);
+  legacy.weeks[0].days[0].periods[0].breakMinutes = 'PRIVATE-BREAK-VALUE';
+  const raw = JSON.stringify(legacy);
+  const { storage, store } = loadStore(raw);
+
+  const inspected = store.inspect();
+  assert.equal(inspected.status, 'invalid');
+  assert.equal(inspected.raw, raw);
+  assert.equal(inspected.error.message.includes('PRIVATE-BREAK-VALUE'), false);
+  assert.throws(
+    () => store.readLegacy(),
+    error => /breakMinutes must be/.test(error.message) &&
+      !error.message.includes('PRIVATE-BREAK-VALUE')
+  );
+  assert.equal(storage.values.get(store.storageKey), raw);
+  assert.equal(storage.setCalls.length, 0);
+
+  const invalidTime = legacyState(template);
+  invalidTime.weeks[0].days[0].periods[0].start = 'PRIVATE-TIME-VALUE';
+  const timeStore = loadStore(JSON.stringify(invalidTime)).store;
+  assert.throws(
+    () => timeStore.readLegacy(),
+    error => /times must be/.test(error.message) &&
+      !error.message.includes('PRIVATE-TIME-VALUE')
+  );
 });
 
 test('strict validation rejects malformed, expanded, and semantically invalid states', () => {
