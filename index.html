@@ -14,6 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png?v=2">
   <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167x167.png?v=2">
   <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152x152.png?v=2">
+  <link rel="stylesheet" href="timecard-sync.css?v=1">
   <title>Timecard Validator</title>
   <style>
     :root {
@@ -226,14 +227,16 @@
     </main>
   </section>
 
+  <script src="timecard-store.js?v=1"></script>
   <script>
     const days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const maxPeriods = 3;
     const maxWeeks = 4;
-    const storageKey = 'timecard-validator-v1';
     const copyDigits = [...'𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'];
     const weekCards = document.getElementById('weekCards');
+    const timecardStore = window.TimecardStore;
     let visibleWeekCount = 1;
+    let pendingExternalState = null;
 
     const toMins = value => {
       if (!value) return null;
@@ -412,8 +415,8 @@
       });
     }
 
-    function saveState() {
-      const state = {
+    function collectState() {
+      return {
         version: 1,
         weekStart: document.getElementById('weekStart').value,
         visibleWeekCount,
@@ -426,51 +429,72 @@
           }))
         }))
       };
-
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(state));
-      } catch {
-        // The timecard still works when browser storage is unavailable.
-      }
     }
 
-    function restoreState() {
-      let saved;
+    async function saveState() {
+      if (!timecardStore) return false;
       try {
-        saved = JSON.parse(localStorage.getItem(storageKey));
+        await timecardStore.write(collectState(), { source: 'local' });
+        return true;
       } catch {
         return false;
       }
-      if (!saved || saved.version !== 1 || !Array.isArray(saved.weeks)) return false;
+    }
 
-      if (typeof saved.weekStart === 'string') document.getElementById('weekStart').value = saved.weekStart;
-      saved.weeks.slice(0, maxWeeks).forEach((savedWeek, weekIndex) => {
-        if (!savedWeek || !Array.isArray(savedWeek.days)) return;
+    function renderState(saved) {
+      document.getElementById('weekStart').value = saved.weekStart;
+      saved.weeks.forEach((savedWeek, weekIndex) => {
         const card = weekCards.querySelector(`.week-card[data-week-index="${weekIndex}"]`);
         const rows = [...card.querySelectorAll('tr[data-day]')];
 
-        savedWeek.days.slice(0, days.length).forEach((savedDay, dayIndex) => {
-          const savedPeriods = savedDay && Array.isArray(savedDay.periods)
-            ? savedDay.periods.slice(0, maxPeriods)
-            : [];
-          if (savedPeriods.length === 0) return;
-
+        savedWeek.days.forEach((savedDay, dayIndex) => {
+          const savedPeriods = savedDay.periods;
           const row = rows[dayIndex];
           const periods = row.querySelector('.periods');
           periods.innerHTML = savedPeriods.map((_, index) => periodMarkup(days[dayIndex], index, weekIndex + 1)).join('');
           [...periods.querySelectorAll('.period')].forEach((period, periodIndex) => {
-            const savedPeriod = savedPeriods[periodIndex] || {};
-            period.querySelector('.start').value = typeof savedPeriod.start === 'string' ? savedPeriod.start : '';
-            period.querySelector('.end').value = typeof savedPeriod.end === 'string' ? savedPeriod.end : '';
+            const savedPeriod = savedPeriods[periodIndex];
+            period.querySelector('.start').value = savedPeriod.start;
+            period.querySelector('.end').value = savedPeriod.end;
           });
           refreshPeriodControls(row);
         });
       });
 
       updateDates();
-      const restoredWeekCount = Number(saved.visibleWeekCount);
-      setVisibleWeekCount(Number.isFinite(restoredWeekCount) ? restoredWeekCount : 1);
+      setVisibleWeekCount(saved.visibleWeekCount);
+    }
+
+    function restoreState() {
+      if (!timecardStore) return false;
+      const inspected = timecardStore.inspect();
+      if (inspected.status !== 'valid') return false;
+      renderState(inspected.state);
       return true;
+    }
+
+    function hasActiveTimecardEditor() {
+      const active = document.activeElement;
+      return Boolean(active && (
+        active === document.getElementById('weekStart') ||
+        (weekCards.contains(active) && active.matches('input[type="time"]'))
+      ));
+    }
+
+    function renderExternalState(state) {
+      if (hasActiveTimecardEditor()) {
+        pendingExternalState = state;
+        return;
+      }
+      pendingExternalState = null;
+      renderState(state);
+    }
+
+    function flushPendingExternalState() {
+      if (!pendingExternalState || hasActiveTimecardEditor()) return;
+      const state = pendingExternalState;
+      pendingExternalState = null;
+      renderState(state);
     }
 
     function getCopyText(row) {
@@ -725,10 +749,27 @@
       saveState();
     });
 
+    if (timecardStore) {
+      window.addEventListener(timecardStore.changeEvent, event => {
+        const detail = event.detail;
+        if (!detail || !timecardStore.isState(detail.state)) return;
+        if (detail.source === 'local') {
+          pendingExternalState = null;
+          return;
+        }
+        renderExternalState(detail.state);
+      });
+      document.addEventListener('focusout', () => {
+        setTimeout(flushPendingExternalState, 0);
+      });
+    }
+
     if (!restoreState()) {
       document.getElementById('todayBtn').click();
       setVisibleWeekCount(1);
     }
   </script>
+  <script src="https://ryan-app-sync.ryan-666-mp3.chatgpt.site/ryan-app-sync.js"></script>
+  <script src="timecard-sync.js?v=1"></script>
 </body>
 </html>
