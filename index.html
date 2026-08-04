@@ -233,9 +233,27 @@
     const maxWeeks = 4;
     const copyDigits = [...'𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'];
     const weekCards = document.getElementById('weekCards');
+    const timecardLink = document.querySelector('.timecard-link');
     const timecardStore = window.TimecardStore;
     let visibleWeekCount = 1;
     let pendingExternalState = null;
+
+    timecardLink.addEventListener('click', event => {
+      event.preventDefault();
+      const timecardWindow = window.open(
+        '',
+        'timecard-validator-timecard',
+        'popup=yes,width=600,height=760,resizable=yes,scrollbars=yes'
+      );
+
+      if (timecardWindow) {
+        timecardWindow.opener = null;
+        timecardWindow.location.href = timecardLink.href;
+        timecardWindow.focus();
+      } else {
+        window.location.assign(timecardLink.href);
+      }
+    });
 
     const toMins = value => {
       if (!value) return null;
