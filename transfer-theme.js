@@ -9,7 +9,17 @@
   ];
   const dialogs = ".ryan-transfer-dialog, .ryan-semantic-sync-dialog, .ryan-v3-recovery-dialog";
   const cards = ".ryan-transfer-card, .ryan-semantic-sync-card, .ryan-v3-recovery-card";
-  const headers = ".ryan-transfer-card > header, .ryan-semantic-sync-card > header, .ryan-v3-recovery-card > header";
+  const headerSelectors = [
+    ".ryan-transfer-card > header",
+    ".ryan-semantic-sync-card > header",
+    ".ryan-v3-recovery-card > header",
+  ];
+  const headers = headerSelectors.join(", ");
+  const headerDescendants = (suffix) => headerSelectors.map((header) => `${header}${suffix}`).join(", ");
+  const headerSmall = headerDescendants(" small");
+  const headerContent = headerDescendants(" > div");
+  const headerTitles = headerDescendants(" h2");
+  const headerButtons = headerDescendants(" > button");
   const statusPanels = [
     ".ryan-transfer-status", ".ryan-transfer-preview", ".ryan-transfer-sync",
     ".ryan-semantic-sync-status", ".ryan-semantic-sync-card section",
@@ -40,10 +50,10 @@
       .ryan-v3-recovery-dialog{z-index:2147482997!important}
       ${cards}{padding:14px!important}
       ${headers}{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important}
-      ${headers} small{display:none!important}
-      ${headers} > div{display:block!important;min-width:0!important;overflow:hidden!important}
-      ${headers} h2{display:block!important;min-width:0!important;margin:0!important;padding:0!important;position:static!important;inset:auto!important;transform:none!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font:inherit!important;font-size:14px!important;line-height:18px!important;font-weight:bold!important}
-      ${headers} > button{flex:0 0 auto!important;min-width:18px!important;min-height:18px!important;width:18px!important;height:18px!important;padding:0!important;line-height:14px!important}
+      ${headerSmall}{display:none!important}
+      ${headerContent}{display:block!important;min-width:0!important;overflow:hidden!important}
+      ${headerTitles}{display:block!important;min-width:0!important;margin:0!important;padding:0!important;position:static!important;inset:auto!important;transform:none!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font:inherit!important;font-size:14px!important;line-height:18px!important;font-weight:bold!important}
+      ${headerButtons}{flex:0 0 auto!important;min-width:18px!important;min-height:18px!important;width:18px!important;height:18px!important;padding:0!important;line-height:14px!important}
       .ryan-transfer-actions,.ryan-semantic-sync-actions,.ryan-v3-recovery-actions,.ryan-semantic-conflict-actions,.ryan-transfer-conflict-actions{display:flex!important;flex-wrap:wrap!important;gap:10px!important;margin-top:12px!important}
       ${statusPanels}{margin-top:14px!important;padding:12px!important;border:2px groove var(--light)!important;background:var(--face)!important}
       .ryan-transfer-preview h3,.ryan-transfer-sync h3,.ryan-semantic-sync-card h3{margin-top:0!important}
