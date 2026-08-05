@@ -9,7 +9,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Timecard Validator">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" type="image/png" href="assets/icons/timecard-validator-192.png?v=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png?v=2">
   <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167x167.png?v=2">
@@ -788,6 +789,14 @@
       }
       setVisibleWeekCount(1);
     }
+  </script>
+  <script src="temporary-data-transfer.js"></script>
+  <script>
+    window.TemporaryDataTransfer.install({
+      appId: "timecard-validator",
+      appName: "Timecard Validator",
+      storageKeys: ["timecard-validator-v1"]
+    });
   </script>
 </body>
 </html>
