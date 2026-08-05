@@ -790,12 +790,20 @@
       setVisibleWeekCount(1);
     }
   </script>
+  <script src="timecard-semantic-storage.js"></script>
+  <script src="semantic-app-sync.js"></script>
   <script src="temporary-data-transfer.js"></script>
   <script>
     window.TemporaryDataTransfer.install({
       appId: "timecard-validator",
       appName: "Timecard Validator",
-      storageKeys: ["timecard-validator-v1"]
+      storageKeys: ["timecard-validator-v1"],
+      disableRawSync: true
+    });
+    window.SemanticAppSync.install({
+      appId: "timecard-validator",
+      appName: "Timecard Validator",
+      storage: window.TimecardSemanticStorage
     });
   </script>
 </body>
