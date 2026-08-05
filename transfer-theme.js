@@ -40,7 +40,10 @@
       .ryan-v3-recovery-dialog{z-index:2147482997!important}
       ${cards}{padding:14px!important}
       ${headers}{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important}
-      ${headers} h2{margin:0!important;font:inherit!important}
+      ${headers} small{display:none!important}
+      ${headers} > div{display:block!important;min-width:0!important;overflow:hidden!important}
+      ${headers} h2{display:block!important;min-width:0!important;margin:0!important;padding:0!important;position:static!important;inset:auto!important;transform:none!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font:inherit!important;font-size:14px!important;line-height:18px!important;font-weight:bold!important}
+      ${headers} > button{flex:0 0 auto!important;min-width:18px!important;min-height:18px!important;width:18px!important;height:18px!important;padding:0!important;line-height:14px!important}
       .ryan-transfer-actions,.ryan-semantic-sync-actions,.ryan-v3-recovery-actions,.ryan-semantic-conflict-actions,.ryan-transfer-conflict-actions{display:flex!important;flex-wrap:wrap!important;gap:10px!important;margin-top:12px!important}
       ${statusPanels}{margin-top:14px!important;padding:12px!important;border:2px groove var(--light)!important;background:var(--face)!important}
       .ryan-transfer-preview h3,.ryan-transfer-sync h3,.ryan-semantic-sync-card h3{margin-top:0!important}
