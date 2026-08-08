@@ -72,6 +72,7 @@ const jsonClone = value => JSON.parse(JSON.stringify(value));
 
 const legacyState = (store, breakMinutes = '30') => {
   const state = store.defaultState('2026-07-25');
+  state.version = 1;
   state.weeks.forEach(week => {
     week.days.forEach(day => {
       day.periods.forEach(period => {
@@ -82,12 +83,12 @@ const legacyState = (store, breakMinutes = '30') => {
   return state;
 };
 
-test('default state and both fixed adapter values use the strict version-1 schema', () => {
+test('default state uses rolling version 2 while its workspace value keeps the stable data shape', () => {
   const { store } = loadStore();
   const state = store.defaultState('2026-07-25');
 
   assert.equal(store.isState(state), true);
-  assert.equal(state.version, 1);
+  assert.equal(state.version, 2);
   assert.equal(state.weekStart, '2026-07-25');
   assert.equal(state.visibleWeekCount, 1);
   assert.equal(state.weeks.length, 4);
@@ -98,6 +99,91 @@ test('default state and both fixed adapter values use the strict version-1 schem
   );
   assert.deepEqual(Object.keys(store.workspaceValue(state)).sort(), ['weekStart', 'weeks']);
   assert.deepEqual(jsonClone(store.viewValue(state)), { visibleWeekCount: 1 });
+});
+
+test('legacy forward weeks migrate by their saved dates into the current-plus-past-three window', () => {
+  const { store } = loadStore();
+  const legacy = store.defaultState('2026-07-11');
+  legacy.version = 1;
+  legacy.weeks.forEach((week, index) => {
+    week.days[0].periods[0].start = `${String(8 + index).padStart(2, '0')}:00`;
+    week.days[0].periods[0].end = `${String(10 + index).padStart(2, '0')}:00`;
+  });
+
+  const rolling = store.toRollingState(legacy, '2026-08-01');
+
+  assert.equal(rolling.version, 2);
+  assert.equal(rolling.weekStart, '2026-08-01');
+  assert.deepEqual(
+    jsonClone(rolling.weeks.map(week => jsonClone(week.days[0].periods[0]))),
+    [
+      { start: '11:00', end: '13:00' },
+      { start: '10:00', end: '12:00' },
+      { start: '09:00', end: '11:00' },
+      { start: '08:00', end: '10:00' },
+    ]
+  );
+  assert.equal(store.isWorkspaceValue(store.workspaceValue(legacy)), true);
+  assert.equal(store.isWorkspaceValue(store.workspaceValue(rolling)), true);
+});
+
+test('an unanchored state stays byte-for-byte in its original slot order until refresh', () => {
+  const { store } = loadStore();
+  const legacy = store.defaultState('');
+  legacy.version = 1;
+  legacy.weeks[0].days[0].periods[0].start = '08:00';
+  legacy.weeks[0].days[0].periods[0].end = '10:00';
+  legacy.weeks[1].days[0].periods[0].start = '09:00';
+  legacy.weeks[1].days[0].periods[0].end = '11:00';
+
+  assert.deepEqual(
+    jsonClone(store.toRollingState(legacy, '2026-08-01')),
+    jsonClone(legacy)
+  );
+
+  const rollingBlank = store.defaultState('');
+  assert.deepEqual(
+    jsonClone(store.toRollingState(rollingBlank, '2026-08-01')),
+    jsonClone(rollingBlank)
+  );
+  assert.deepEqual(
+    jsonClone(store.toRollingState(rollingBlank, '2026-08-01', { reanchorBlank: true })),
+    jsonClone({ ...rollingBlank, weekStart: '2026-08-01' })
+  );
+});
+
+test('rolling forward retains the current week and previous three without re-dating them', () => {
+  const { store } = loadStore();
+  const saved = store.defaultState('2026-08-01');
+  saved.visibleWeekCount = 4;
+  saved.weeks.forEach((week, index) => {
+    week.days[0].periods[0].start = `${String(8 + index).padStart(2, '0')}:00`;
+    week.days[0].periods[0].end = `${String(10 + index).padStart(2, '0')}:00`;
+  });
+
+  assert.deepEqual(jsonClone(store.toRollingState(saved, '2026-08-01')), jsonClone(saved));
+
+  const nextWeek = store.toRollingState(saved, '2026-08-08');
+  assert.deepEqual(
+    jsonClone(nextWeek.weeks.map(week => jsonClone(week.days[0].periods[0]))),
+    [
+      { start: '', end: '' },
+      { start: '08:00', end: '10:00' },
+      { start: '09:00', end: '11:00' },
+      { start: '10:00', end: '12:00' },
+    ]
+  );
+
+  const twoWeeksLater = store.toRollingState(nextWeek, '2026-08-15');
+  assert.deepEqual(
+    jsonClone(twoWeeksLater.weeks.map(week => jsonClone(week.days[0].periods[0]))),
+    [
+      { start: '', end: '' },
+      { start: '', end: '' },
+      { start: '08:00', end: '10:00' },
+      { start: '09:00', end: '11:00' },
+    ]
+  );
 });
 
 test('the exact historical manual-break schema is detected without rewriting raw bytes', async () => {
@@ -189,7 +275,7 @@ test('strict validation rejects malformed, expanded, and semantically invalid st
   const cases = [];
 
   const wrongVersion = store.defaultState('2026-07-25');
-  wrongVersion.version = 2;
+  wrongVersion.version = 3;
   cases.push(wrongVersion);
 
   const extraRootKey = store.defaultState('2026-07-25');
@@ -255,7 +341,7 @@ test('invalid-state diagnostics identify only structure, type, or range failures
   const wrongVersion = makeState();
   wrongVersion.version = 999;
   const versionMessage = diagnosticFor(wrongVersion);
-  assert.match(versionMessage, /Reason: version must be 1\./);
+  assert.match(versionMessage, /Reason: version must be 1 or 2\./);
   assert.equal(versionMessage.includes('999'), false);
 
   const wrongWeekCount = makeState();
@@ -326,6 +412,26 @@ test('a first local write changes only the owned key and publishes source-tagged
   assert.deepEqual(jsonClone(lockCalls), [[store.lockName, { mode: 'exclusive' }]]);
 });
 
+test('rolling migration keeps the exact version-1 bytes in a one-time backup', async () => {
+  const template = loadStore().store;
+  const legacy = template.defaultState('2026-07-11');
+  legacy.version = 1;
+  legacy.weeks[0].days[0].periods[0].start = '08:00';
+  legacy.weeks[0].days[0].periods[0].end = '10:00';
+  const raw = JSON.stringify(legacy, null, 2);
+  const { storage, store } = loadStore(raw);
+  const rolling = store.toRollingState(store.inspect().state, '2026-08-01');
+
+  await store.write(rolling);
+
+  assert.equal(storage.values.get(store.migrationBackupKey), raw);
+  assert.equal(storage.values.get(store.storageKey), JSON.stringify(rolling));
+  assert.deepEqual(storage.setCalls, [
+    [store.migrationBackupKey, raw],
+    [store.storageKey, JSON.stringify(rolling)],
+  ]);
+});
+
 test('the local save stays committed if downstream sync staging fails', async () => {
   const { listen, storage, store } = loadStore();
   listen(store.changeEvent, event => {
@@ -352,7 +458,7 @@ test('workspace and view adapters preserve the other half of the aggregate state
   remoteWorkspace.weekStart = '2026-08-01';
   remoteWorkspace.weeks[0].days[0].periods[0].start = '10:00';
   remoteWorkspace.weeks[0].days[0].periods[0].end = '13:00';
-  await store.applyWorkspace(remoteWorkspace, { source: 'sync' });
+  await store.applyWorkspace(remoteWorkspace, { source: 'sync', schemaVersion: 2 });
 
   let saved = store.read();
   assert.equal(saved.visibleWeekCount, 3);
@@ -388,7 +494,7 @@ test('fixed records reject synchronized deletion without changing local bytes', 
   assert.equal(storage.values.get(store.storageKey), rawBefore);
 });
 
-test('raw backup contains the exact owned browser value and no storage scan', () => {
+test('raw backup contains the exact owned browser values and no storage scan', () => {
   const raw = '{"not":"validated on export","spacing": true}';
   const { storage, store } = loadStore(raw);
   const backup = store.rawBackup();
@@ -399,8 +505,15 @@ test('raw backup contains the exact owned browser value and no storage scan', ()
     key: 'timecard-validator-v1',
     present: true,
     raw_value: raw,
+  }, {
+    key: 'timecard-validator-v1-before-rolling-window',
+    present: false,
+    raw_value: null,
   }]);
-  assert.deepEqual(storage.getCalls, ['timecard-validator-v1']);
+  assert.deepEqual(storage.getCalls, [
+    'timecard-validator-v1',
+    'timecard-validator-v1-before-rolling-window',
+  ]);
   assert.equal('length' in storage, false);
   assert.equal('key' in storage, false);
 });

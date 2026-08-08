@@ -136,7 +136,20 @@
       if (!fixed && (typeof adapter.listLocal !== 'function' || typeof adapter.applyRemote !== 'function')) {
         throw new Error('A list semantic sync adapter is incomplete.');
       }
-      return { name, adapter, fixed, schemaVersion: adapter.schemaVersion || 1 };
+      if (adapter.shouldSync !== undefined && (typeof adapter.shouldSync !== 'function' || !fixed)) {
+        throw new Error('A semantic sync adapter has an invalid sync gate.');
+      }
+      const schemaVersion = adapter.schemaVersion || 1;
+      const acceptedSchemaVersions = Array.isArray(adapter.acceptedSchemaVersions)
+        ? adapter.acceptedSchemaVersions
+        : [schemaVersion];
+      if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 1 || schemaVersion > 100 ||
+          !acceptedSchemaVersions.length ||
+          !acceptedSchemaVersions.every((version) => Number.isSafeInteger(version) && version >= 1 && version <= 100) ||
+          !acceptedSchemaVersions.includes(schemaVersion)) {
+        throw new Error('A semantic sync adapter declares invalid schema versions.');
+      }
+      return { name, adapter, fixed, schemaVersion, acceptedSchemaVersions };
     });
     const ui = makeUi(options.appName);
     let state = readState(options.appId);
@@ -146,7 +159,7 @@
     const descriptorFor = (collection, recordId) => descriptors.find(({ adapter, fixed }) =>
       adapter.collection === collection && (!fixed || adapter.recordId === recordId));
     const validPayload = (descriptor, recordId, payload) => exactKeys(payload, ['schemaVersion', 'deleted', 'data'])
-      && payload.schemaVersion === descriptor.schemaVersion
+      && descriptor.acceptedSchemaVersions.includes(payload.schemaVersion)
       && typeof payload.deleted === 'boolean'
       && (payload.deleted ? payload.data === null : safeJson(payload.data)
         && bytes(JSON.stringify(payload.data)) <= MAX_VALUE_BYTES
@@ -176,13 +189,32 @@
     }
     async function applyRemote(descriptor, recordId, payload) {
       if (!validPayload(descriptor, recordId, payload)) throw new Error(`The synchronized ${descriptor.adapter.collection} record is invalid.`);
-      if (descriptor.fixed) return descriptor.adapter.applyRemote(payload.data, { source: 'remote', deleted: payload.deleted });
-      return descriptor.adapter.applyRemote(recordId, payload.data, { source: 'remote', deleted: payload.deleted });
+      if (descriptor.fixed) return descriptor.adapter.applyRemote(payload.data, {
+        source: 'remote',
+        deleted: payload.deleted,
+        schemaVersion: payload.schemaVersion,
+      });
+      return descriptor.adapter.applyRemote(recordId, payload.data, {
+        source: 'remote',
+        deleted: payload.deleted,
+        schemaVersion: payload.schemaVersion,
+      });
     }
-    async function readLocal() {
+    async function skippedFixedRecords() {
+      const skipped = new Set();
+      for (const descriptor of descriptors) {
+        if (descriptor.fixed && descriptor.adapter.shouldSync &&
+            !(await descriptor.adapter.shouldSync(descriptor.adapter.recordId))) {
+          skipped.add(identity(descriptor.adapter.collection, descriptor.adapter.recordId));
+        }
+      }
+      return skipped;
+    }
+    async function readLocal(skipped) {
       const records = new Map();
       for (const descriptor of descriptors) {
         if (descriptor.fixed) {
+          if (skipped.has(identity(descriptor.adapter.collection, descriptor.adapter.recordId))) continue;
           const value = await descriptor.adapter.readLocal();
           if (value !== undefined && !descriptor.adapter.validate(value, descriptor.adapter.recordId)) {
             throw new Error(`This device's ${descriptor.adapter.collection} record is invalid.`);
@@ -237,6 +269,7 @@
       running = true;
       ui.setStatus('Syncing independent records safely…');
       try {
+        const skipped = await skippedFixedRecords();
         const response = await fetch(`/api/app-sync?appId=${encodeURIComponent(options.appId)}`, { cache: 'no-store', credentials: 'same-origin' });
         const manifest = await responseJson(response);
         if (!response.ok || !manifest || !Array.isArray(manifest.records)) throw new Error(manifest?.error || 'Private sync is unavailable. Local data is preserved.');
@@ -245,14 +278,16 @@
           if (!isObject(record) || typeof record.collection !== 'string' || typeof record.recordId !== 'string'
             || !Number.isSafeInteger(record.revision) || record.revision < 1) throw new Error('A synchronized record has an invalid revision.');
           const descriptor = descriptorFor(record.collection, record.recordId);
+          if (descriptor && skipped.has(identity(record.collection, record.recordId))) continue;
           if (!descriptor || !validPayload(descriptor, record.recordId, record.value)) throw new Error('A synchronized record has an unsupported schema.');
           remote.set(identity(record.collection, record.recordId), { ...record, descriptor });
         }
-        const local = await readLocal();
+        const local = await readLocal(skipped);
         const all = new Set([...local.keys(), ...remote.keys(), ...Object.keys(state.records)]);
         const conflicts = [];
         let changed = 0;
         for (const key of [...all].sort()) {
+          if (skipped.has(key)) continue;
           const item = local.get(key);
           const currentRemote = remote.get(key) || null;
           const known = state.records[key];

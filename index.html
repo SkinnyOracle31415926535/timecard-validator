@@ -210,14 +210,14 @@
     <div class="titlebar"><span>TIMECARD VALIDATOR</span><span aria-hidden="true">X</span></div>
     <main>
       <a class="timecard-link" href="https://calsportscenter.bamboohr.com/" target="_blank" rel="noopener noreferrer">Timecard Link</a>
-      <p class="intro">Validate up to three clock-in/out periods per day for as many as four Saturday–Friday workweeks. Each week is checked independently for weekly hours, daily hours, required days off, and missing 30-minute breaks.</p>
+      <p class="intro">Validate up to three clock-in/out periods per day. Your current Saturday–Friday week and the previous three weeks are kept automatically, and each week is checked independently for weekly hours, daily hours, required days off, and missing 30-minute breaks.</p>
 
       <fieldset>
         <legend>Workweek</legend>
         <div class="week">
-          <label for="weekStart">Week 1 begins (Saturday):</label>
-          <input id="weekStart" type="date">
-          <button id="todayBtn" type="button">This Saturday</button>
+          <label for="weekStart">Current week begins (Saturday):</label>
+          <input id="weekStart" type="date" readonly>
+          <button id="todayBtn" type="button">Refresh current week</button>
         </div>
       </fieldset>
 
@@ -227,16 +227,18 @@
     </main>
   </section>
 
-  <script src="timecard-store.js?v=1"></script>
+  <script src="timecard-store.js?v=2"></script>
   <script>
     const days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const maxPeriods = 3;
     const maxWeeks = 4;
+    const weekLabels = ['Current Week', 'Last Week', '2 Weeks Ago', '3 Weeks Ago'];
     const copyDigits = [...'𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'];
     const weekCards = document.getElementById('weekCards');
     const timecardLink = document.querySelector('.timecard-link');
     const timecardStore = window.TimecardStore;
     let visibleWeekCount = 1;
+    let renderedStateVersion = timecardStore ? timecardStore.stateVersion : 2;
     let pendingExternalState = null;
 
     timecardLink.addEventListener('click', event => {
@@ -271,27 +273,29 @@
       return `${year}-${month}-${day}`;
     };
 
-    function periodMarkup(day, index, weekNumber) {
+    const weekLabelForIndex = index => weekLabels[index] || `Week ${index + 1}`;
+
+    function periodMarkup(day, index, weekLabel) {
       const number = index + 1;
       return `
         <div class="period" data-period="${index}">
           <span class="period-number">Period ${number}</span>
           <label class="field-label">Clock in
-            <input class="start" type="time" aria-label="Week ${weekNumber}, ${day}, period ${number} clock in">
+            <input class="start" type="time" aria-label="${weekLabel}, ${day}, period ${number} clock in">
           </label>
           <label class="field-label">Clock out
-            <input class="end" type="time" aria-label="Week ${weekNumber}, ${day}, period ${number} clock out">
+            <input class="end" type="time" aria-label="${weekLabel}, ${day}, period ${number} clock out">
           </label>
           <button class="remove-period" type="button"${index === 0 ? ' hidden' : ''}>Remove</button>
         </div>`;
     }
 
-    function rowMarkup(day, weekNumber) {
+    function rowMarkup(day, weekLabel) {
       return `
         <tr data-day="${day}">
           <td class="day-cell">${day}<span class="date"></span></td>
           <td>
-            <div class="periods">${periodMarkup(day, 0, weekNumber)}</div>
+            <div class="periods">${periodMarkup(day, 0, weekLabel)}</div>
             <div class="period-actions">
               <button class="add-period" type="button">+ Add period</button>
               <span class="period-limit">1 of ${maxPeriods}</span>
@@ -304,10 +308,10 @@
     }
 
     function weekCardMarkup(index) {
-      const weekNumber = index + 1;
+      const weekLabel = weekLabelForIndex(index);
       return `
         <fieldset class="week-card" data-week-index="${index}"${index === 0 ? '' : ' hidden'}>
-          <legend>Week ${weekNumber}<span class="week-range"></span></legend>
+          <legend>${weekLabel}<span class="week-range"></span></legend>
           <div class="table-wrap">
             <table>
               <thead>
@@ -318,15 +322,15 @@
                   <th>Valid?</th>
                 </tr>
               </thead>
-              <tbody class="schedule-rows">${days.map(day => rowMarkup(day, weekNumber)).join('')}</tbody>
+              <tbody class="schedule-rows">${days.map(day => rowMarkup(day, weekLabel)).join('')}</tbody>
             </table>
           </div>
           <div class="actions">
             <button class="check-week" type="button">Validate Week</button>
             <button class="clear-week" type="button">Clear Week</button>
             ${index === 0 ? `
-              <button id="showWeekBtn" type="button">Show +1 Week</button>
-              <button id="hideWeekBtn" type="button" disabled>Hide 1 Week</button>` : ''}
+              <button id="showWeekBtn" type="button">Show Past Week</button>
+              <button id="hideWeekBtn" type="button" disabled>Hide Past Week</button>` : ''}
           </div>
           <div class="summary">
             <div class="metric">Weekly paid hours<b class="total-hours">0.00</b></div>
@@ -340,13 +344,13 @@
     function refreshPeriodControls(row) {
       const periods = [...row.querySelectorAll('.period')];
       const day = row.dataset.day;
-      const weekNumber = Number(row.closest('.week-card').dataset.weekIndex) + 1;
+      const weekLabel = weekLabelForIndex(Number(row.closest('.week-card').dataset.weekIndex));
 
       periods.forEach((period, index) => {
         period.dataset.period = index;
         period.querySelector('.period-number').textContent = `Period ${index + 1}`;
-        period.querySelector('.start').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock in`);
-        period.querySelector('.end').setAttribute('aria-label', `Week ${weekNumber}, ${day}, period ${index + 1} clock out`);
+        period.querySelector('.start').setAttribute('aria-label', `${weekLabel}, ${day}, period ${index + 1} clock in`);
+        period.querySelector('.end').setAttribute('aria-label', `${weekLabel}, ${day}, period ${index + 1} clock out`);
         period.querySelector('.remove-period').hidden = index === 0;
       });
 
@@ -382,8 +386,8 @@
       const count = periods.querySelectorAll('.period').length;
       if (count >= maxPeriods) return;
 
-      const weekNumber = Number(row.closest('.week-card').dataset.weekIndex) + 1;
-      periods.insertAdjacentHTML('beforeend', periodMarkup(row.dataset.day, count, weekNumber));
+      const weekLabel = weekLabelForIndex(Number(row.closest('.week-card').dataset.weekIndex));
+      periods.insertAdjacentHTML('beforeend', periodMarkup(row.dataset.day, count, weekLabel));
       refreshPeriodControls(row);
       periods.lastElementChild.querySelector('.start').focus();
       checkWeek(row.closest('.week-card'));
@@ -399,8 +403,8 @@
     }
 
     function resetWeek(card) {
-      const weekNumber = Number(card.dataset.weekIndex) + 1;
-      card.querySelector('.schedule-rows').innerHTML = days.map(day => rowMarkup(day, weekNumber)).join('');
+      const weekLabel = weekLabelForIndex(Number(card.dataset.weekIndex));
+      card.querySelector('.schedule-rows').innerHTML = days.map(day => rowMarkup(day, weekLabel)).join('');
       updateDates();
       checkWeek(card);
       saveState();
@@ -420,7 +424,7 @@
         }
 
         const weekStart = new Date(`${startValue}T12:00:00`);
-        weekStart.setDate(weekStart.getDate() + weekIndex * 7);
+        weekStart.setDate(weekStart.getDate() - weekIndex * 7);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
         rangeNode.textContent = `(${weekStart.getMonth() + 1}/${weekStart.getDate()}–${weekEnd.getMonth() + 1}/${weekEnd.getDate()})`;
@@ -435,7 +439,7 @@
 
     function collectState() {
       return {
-        version: 1,
+        version: renderedStateVersion,
         weekStart: document.getElementById('weekStart').value,
         visibleWeekCount,
         weeks: [...weekCards.querySelectorAll('.week-card')].map(card => ({
@@ -460,6 +464,7 @@
     }
 
     function renderState(saved) {
+      renderedStateVersion = saved.version;
       document.getElementById('weekStart').value = saved.weekStart;
       saved.weeks.forEach((savedWeek, weekIndex) => {
         const card = weekCards.querySelector(`.week-card[data-week-index="${weekIndex}"]`);
@@ -469,7 +474,7 @@
           const savedPeriods = savedDay.periods;
           const row = rows[dayIndex];
           const periods = row.querySelector('.periods');
-          periods.innerHTML = savedPeriods.map((_, index) => periodMarkup(days[dayIndex], index, weekIndex + 1)).join('');
+          periods.innerHTML = savedPeriods.map((_, index) => periodMarkup(days[dayIndex], index, weekLabelForIndex(weekIndex))).join('');
           [...periods.querySelectorAll('.period')].forEach((period, periodIndex) => {
             const savedPeriod = savedPeriods[periodIndex];
             period.querySelector('.start').value = savedPeriod.start;
@@ -487,7 +492,11 @@
       if (!timecardStore) return false;
       const inspected = timecardStore.inspect();
       if (inspected.status !== 'valid') return false;
-      renderState(inspected.state);
+      const rollingState = timecardStore.toRollingState(inspected.state);
+      renderState(rollingState);
+      if (JSON.stringify(rollingState) !== JSON.stringify(inspected.state)) {
+        void timecardStore.write(rollingState, { source: 'local' }).catch(() => {});
+      }
       return true;
     }
 
@@ -505,14 +514,14 @@
         return;
       }
       pendingExternalState = null;
-      renderState(state);
+      renderState(timecardStore ? timecardStore.toRollingState(state) : state);
     }
 
     function flushPendingExternalState() {
       if (!pendingExternalState || hasActiveTimecardEditor()) return;
       const state = pendingExternalState;
       pendingExternalState = null;
-      renderState(state);
+      renderState(timecardStore ? timecardStore.toRollingState(state) : state);
     }
 
     function getCopyText(row) {
@@ -750,20 +759,14 @@
       setVisibleWeekCount(visibleWeekCount - 1);
       saveState();
     });
-    document.getElementById('weekStart').addEventListener('change', event => {
-      if (event.target.value) {
-        const date = new Date(`${event.target.value}T12:00:00`);
-        date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
-        event.target.value = toDateInputValue(date);
-      }
-      updateDates();
-      saveState();
-    });
     document.getElementById('todayBtn').addEventListener('click', () => {
       const date = new Date();
       date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
-      document.getElementById('weekStart').value = toDateInputValue(date);
-      updateDates();
+      const currentWeekStart = toDateInputValue(date);
+      const rollingState = timecardStore
+        ? timecardStore.toRollingState(collectState(), currentWeekStart, { reanchorBlank: true })
+        : { ...collectState(), weekStart: currentWeekStart };
+      renderState(rollingState);
       saveState();
     });
 
@@ -790,8 +793,8 @@
       setVisibleWeekCount(1);
     }
   </script>
-  <script src="timecard-semantic-storage.js"></script>
-  <script src="semantic-app-sync.js"></script>
+  <script src="timecard-semantic-storage.js?v=2"></script>
+  <script src="semantic-app-sync.js?v=2"></script>
   <script>
     window.SemanticAppSync.install({
       appId: "timecard-validator",

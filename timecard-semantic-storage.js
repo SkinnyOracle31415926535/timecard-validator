@@ -3,7 +3,9 @@
   'use strict';
 
   const APP_ID = 'timecard-validator';
-  const SCHEMA_VERSION = 1;
+  const LEGACY_WORKSPACE_SCHEMA_VERSION = 1;
+  const WORKSPACE_SCHEMA_VERSION = 2;
+  const VIEW_SCHEMA_VERSION = 1;
   const store = window.TimecardStore;
   let handles = null;
 
@@ -19,6 +21,11 @@
     return state ? store.workspaceValue(state) : undefined;
   };
 
+  const shouldSyncWorkspace = () => {
+    const state = currentState();
+    return Boolean(state && state.weekStart);
+  };
+
   const readView = () => {
     const state = currentState();
     return state ? store.viewValue(state) : undefined;
@@ -32,19 +39,22 @@
       appId: APP_ID,
       collection: 'workspace',
       recordId: 'current',
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: WORKSPACE_SCHEMA_VERSION,
+      acceptedSchemaVersions: [LEGACY_WORKSPACE_SCHEMA_VERSION, WORKSPACE_SCHEMA_VERSION],
       validate: validateWorkspace,
+      shouldSync: shouldSyncWorkspace,
       readLocal: readWorkspace,
       applyRemote: (value, metadata) => store.applyWorkspace(value, {
         source: 'remote',
         deleted: Boolean(metadata?.deleted),
+        schemaVersion: metadata?.schemaVersion,
       }),
     },
     view: {
       appId: APP_ID,
       collection: 'preferences',
       recordId: 'view',
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: VIEW_SCHEMA_VERSION,
       validate: validateView,
       readLocal: readView,
       applyRemote: (value, metadata) => store.applyView(value, {
