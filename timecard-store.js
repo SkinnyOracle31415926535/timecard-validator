@@ -82,6 +82,43 @@
     value.days.every(isDay)
   );
 
+  // Transport values deliberately keep the workspace separate from the view.
+  // Version 1 values are the pre-rolling-window format already stored in D1;
+  // version 2 values carry the current rolling layout explicitly.
+  const isLegacyWorkspaceValue = value => (
+    exactKeys(value, ['weekStart', 'weeks']) &&
+    typeof value.weekStart === 'string' &&
+    validSaturday(value.weekStart) &&
+    Array.isArray(value.weeks) &&
+    value.weeks.length === MAX_WEEKS &&
+    value.weeks.every(isWeek)
+  );
+
+  const isWorkspaceValue = value => (
+    exactKeys(value, ['version', 'weekStart', 'weeks']) &&
+    value.version === STATE_VERSION &&
+    typeof value.weekStart === 'string' &&
+    validSaturday(value.weekStart) &&
+    Array.isArray(value.weeks) &&
+    value.weeks.length === MAX_WEEKS &&
+    value.weeks.every(isWeek)
+  );
+
+  const isLegacyViewValue = value => (
+    exactKeys(value, ['visibleWeekCount']) &&
+    Number.isSafeInteger(value.visibleWeekCount) &&
+    value.visibleWeekCount >= 1 &&
+    value.visibleWeekCount <= MAX_WEEKS
+  );
+
+  const isViewValue = value => (
+    exactKeys(value, ['version', 'visibleWeekCount']) &&
+    value.version === STATE_VERSION &&
+    Number.isSafeInteger(value.visibleWeekCount) &&
+    value.visibleWeekCount >= 1 &&
+    value.visibleWeekCount <= MAX_WEEKS
+  );
+
   const stateValidationReason = (value, { manualBreaks = false } = {}) => {
     if (!plainObject(value)) return 'the root must be a JSON object.';
     if (!exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks'])) {
@@ -244,6 +281,23 @@
     };
   };
 
+  const workspaceValue = state => {
+    const rolling = toRollingState(state);
+    return {
+      version: STATE_VERSION,
+      weekStart: rolling.weekStart,
+      weeks: clone(rolling.weeks),
+    };
+  };
+
+  const viewValue = state => {
+    assertState(state);
+    return {
+      version: STATE_VERSION,
+      visibleWeekCount: state.visibleWeekCount,
+    };
+  };
+
   const parseJsonRaw = raw => {
     if (raw === null) return null;
     try {
@@ -328,6 +382,74 @@
     }
   };
 
+  const update = async (mutator, source) => {
+    try {
+      return await withAggregateLock(() => {
+        const existing = readUnlocked();
+        const base = existing || defaultState();
+        return writeUnlocked(mutator(clone(base)), source);
+      });
+    } catch (error) {
+      publishError(error);
+      throw error;
+    }
+  };
+
+  const applyWorkspace = (value, {
+    source = 'remote',
+    deleted = false,
+    schemaVersion = STATE_VERSION,
+  } = {}) => {
+    if (deleted) throw new Error('The current timecard workspace cannot be deleted by automatic sync.');
+    if (schemaVersion !== LEGACY_STATE_VERSION && schemaVersion !== STATE_VERSION) {
+      throw new Error('The synchronized timecard workspace has an unsupported version.');
+    }
+    if (schemaVersion === LEGACY_STATE_VERSION && !isLegacyWorkspaceValue(value)) {
+      throw new Error('The synchronized legacy timecard workspace is invalid.');
+    }
+    if (schemaVersion === STATE_VERSION && !isWorkspaceValue(value)) {
+      throw new Error('The synchronized timecard workspace is invalid.');
+    }
+    return update(state => {
+      const incoming = schemaVersion === LEGACY_STATE_VERSION
+        ? {
+          version: LEGACY_STATE_VERSION,
+          weekStart: value.weekStart,
+          visibleWeekCount: state.visibleWeekCount,
+          weeks: clone(value.weeks),
+        }
+        : {
+          version: STATE_VERSION,
+          weekStart: value.weekStart,
+          visibleWeekCount: state.visibleWeekCount,
+          weeks: clone(value.weeks),
+        };
+      return toRollingState(incoming);
+    }, source);
+  };
+
+  const applyView = (value, {
+    source = 'remote',
+    deleted = false,
+    schemaVersion = STATE_VERSION,
+  } = {}) => {
+    if (deleted) throw new Error('The Timecard view preference cannot be deleted by automatic sync.');
+    if (schemaVersion === LEGACY_STATE_VERSION && !isLegacyViewValue(value)) {
+      throw new Error('The synchronized legacy Timecard view preference is invalid.');
+    }
+    if (schemaVersion === STATE_VERSION && !isViewValue(value)) {
+      throw new Error('The synchronized Timecard view preference is invalid.');
+    }
+    if (schemaVersion !== LEGACY_STATE_VERSION && schemaVersion !== STATE_VERSION) {
+      throw new Error('The synchronized Timecard view preference has an unsupported version.');
+    }
+    return update(state => ({
+      ...toRollingState(state),
+      version: STATE_VERSION,
+      visibleWeekCount: value.visibleWeekCount,
+    }), source);
+  };
+
   const inspect = () => {
     let raw = null;
     try {
@@ -400,12 +522,21 @@
     inspect,
     read: readUnlocked,
     write,
+    update,
     rawBackup,
     defaultState,
     toRollingState,
+    workspaceValue,
+    viewValue,
     isState,
     isLegacyState,
+    isLegacyWorkspaceValue,
+    isWorkspaceValue,
+    isLegacyViewValue,
+    isViewValue,
     readLegacy,
+    applyWorkspace,
+    applyView,
     getLastError: () => lastError,
   });
 })();

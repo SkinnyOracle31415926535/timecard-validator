@@ -50,11 +50,17 @@ function loadStore(raw, { locks = true } = {}) {
   }
   const context = vm.createContext({ CustomEvent: FakeCustomEvent, window });
   vm.runInContext(source, context, { filename: 'timecard-store.js' });
+  const realm = value => {
+    context.__fixture = JSON.stringify(value);
+    try { return vm.runInContext('JSON.parse(__fixture)', context); }
+    finally { delete context.__fixture; }
+  };
   return {
     dispatch: event => window.dispatchEvent(event),
     listen: (type, callback) => window.addEventListener(type, callback),
     storage,
     store: window.TimecardStore,
+    realm,
   };
 }
 
@@ -171,4 +177,43 @@ test('Timecard Validator retains same-browser storage event updates', () => {
   assert.equal(updates.length, 1);
   assert.equal(updates[0].source, 'storage');
   assert.equal(updates[0].state.visibleWeekCount, 3);
+});
+
+test('retained schema-one remote records forward-adapt into the rolling v2 store', async () => {
+  const { store, realm } = loadStore();
+  const current = store.defaultState().weekStart;
+  const previousDate = new Date(`${current}T12:00:00`);
+  previousDate.setDate(previousDate.getDate() - 7);
+  const previous = [
+    String(previousDate.getFullYear()).padStart(4, '0'),
+    String(previousDate.getMonth() + 1).padStart(2, '0'),
+    String(previousDate.getDate()).padStart(2, '0'),
+  ].join('-');
+  const local = store.defaultState(current);
+  local.visibleWeekCount = 3;
+  await store.write(local);
+
+  const legacyWorkspace = {
+    weekStart: previous,
+    weeks: store.defaultState(previous).weeks,
+  };
+  legacyWorkspace.weeks[1].days[0].periods[0] = { start: '09:00', end: '12:00' };
+  await store.applyWorkspace(realm(legacyWorkspace), { source: 'remote', schemaVersion: 1 });
+
+  let saved = store.read();
+  assert.equal(saved.version, store.stateVersion);
+  assert.equal(saved.weekStart, current);
+  assert.equal(saved.visibleWeekCount, 3);
+  assert.deepEqual(
+    jsonClone(saved.weeks[0].days[0].periods[0]),
+    { start: '09:00', end: '12:00' },
+  );
+
+  await store.applyView(realm({ visibleWeekCount: 2 }), { source: 'remote', schemaVersion: 1 });
+  saved = store.read();
+  assert.equal(saved.visibleWeekCount, 2);
+  assert.deepEqual(
+    jsonClone(saved.weeks[0].days[0].periods[0]),
+    { start: '09:00', end: '12:00' },
+  );
 });

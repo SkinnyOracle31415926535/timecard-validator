@@ -793,14 +793,13 @@
       setVisibleWeekCount(1);
     }
   </script>
-  <script src="temporary-data-transfer.js"></script>
+  <script src="timecard-automatic-storage.js"></script>
+  <script src="automatic-app-sync.js"></script>
   <script>
-    window.TemporaryDataTransfer.install({
+    window.AutomaticAppSync.install({
       appId: "timecard-validator",
-      appName: "Timecard Validator",
-      storageKeys: ["timecard-validator-v1"]
+      storage: window.TimecardAutomaticStorage
     });
   </script>
-  <script src="transfer-theme.js"></script>
 </body>
 </html>
