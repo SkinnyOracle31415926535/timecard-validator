@@ -2,12 +2,15 @@
   'use strict';
 
   const STORAGE_KEY = 'timecard-validator-v1';
+  const MIGRATION_BACKUP_KEY = 'timecard-validator-v1-before-rolling-window';
   const CHANGE_EVENT = 'timecard-validator-state-changed';
   const ERROR_EVENT = 'timecard-validator-storage-error';
   const LOCK_NAME = 'timecard-validator:local-state-v1';
   const DAYS_PER_WEEK = 7;
   const MAX_WEEKS = 4;
   const MAX_PERIODS = 3;
+  const LEGACY_STATE_VERSION = 1;
+  const STATE_VERSION = 2;
   const root = window;
   let fallbackQueue = Promise.resolve();
   let lastError = null;
@@ -84,7 +87,10 @@
     if (!exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks'])) {
       return 'the root fields must be exactly version, weekStart, visibleWeekCount, and weeks.';
     }
-    if (value.version !== 1) return 'version must be 1.';
+    if (value.version !== LEGACY_STATE_VERSION && value.version !== STATE_VERSION) {
+      return 'version must be 1 or 2.';
+    }
+    if (manualBreaks && value.version !== LEGACY_STATE_VERSION) return 'version must be 1.';
     if (typeof value.weekStart !== 'string') return 'weekStart must be a string.';
     if (!validSaturday(value.weekStart)) {
       return 'weekStart must be empty or a real Saturday in YYYY-MM-DD format.';
@@ -186,12 +192,57 @@
     ].join('-');
   };
 
+  const shiftSaturday = (value, weeks) => {
+    const date = new Date(`${value}T12:00:00`);
+    date.setDate(date.getDate() + weeks * DAYS_PER_WEEK);
+    return [
+      String(date.getFullYear()).padStart(4, '0'),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+  };
+
   const defaultState = (weekStart = currentSaturday()) => ({
-    version: 1,
+    version: STATE_VERSION,
     weekStart,
     visibleWeekCount: 1,
     weeks: Array.from({ length: MAX_WEEKS }, emptyWeek),
   });
+
+  const toRollingState = (state, currentWeekStart = currentSaturday(), {
+    reanchorBlank = false,
+  } = {}) => {
+    assertState(state);
+    if (!currentWeekStart || !validSaturday(currentWeekStart)) {
+      throw new Error('The current timecard week must begin on a real Saturday.');
+    }
+
+    if (!state.weekStart && !reanchorBlank) return clone(state);
+    if (!state.weekStart) {
+      return {
+        version: STATE_VERSION,
+        weekStart: currentWeekStart,
+        visibleWeekCount: state.visibleWeekCount,
+        weeks: clone(state.weeks),
+      };
+    }
+
+    const weeksByStart = new Map();
+    const direction = state.version === STATE_VERSION ? -1 : 1;
+    state.weeks.forEach((week, index) => {
+      weeksByStart.set(shiftSaturday(state.weekStart, direction * index), clone(week));
+    });
+
+    return {
+      version: STATE_VERSION,
+      weekStart: currentWeekStart,
+      visibleWeekCount: state.visibleWeekCount,
+      weeks: Array.from({ length: MAX_WEEKS }, (_, index) => {
+        const weekStart = shiftSaturday(currentWeekStart, -index);
+        return clone(weeksByStart.get(weekStart) || emptyWeek());
+      }),
+    };
+  };
 
   const parseJsonRaw = raw => {
     if (raw === null) return null;
@@ -242,6 +293,10 @@
       return { state: next, changed: [] };
     }
 
+    if (previous && previous.version === LEGACY_STATE_VERSION && next.version === STATE_VERSION &&
+        root.localStorage.getItem(MIGRATION_BACKUP_KEY) === null) {
+      root.localStorage.setItem(MIGRATION_BACKUP_KEY, previousRaw);
+    }
     root.localStorage.setItem(STORAGE_KEY, nextRaw);
     lastError = null;
     root.dispatchEvent(new CustomEvent(CHANGE_EVENT, {
@@ -299,17 +354,20 @@
   };
 
   const rawBackup = () => {
-    const raw = root.localStorage.getItem(STORAGE_KEY);
+    const record = key => {
+      const raw = root.localStorage.getItem(key);
+      return {
+        key,
+        present: raw !== null,
+        raw_value: raw,
+      };
+    };
     return {
       version: 1,
       kind: 'timecard_validator_browser_local_raw_backup',
       app_id: 'timecard-validator',
       exported_at: new Date().toISOString(),
-      records: [{
-        key: STORAGE_KEY,
-        present: raw !== null,
-        raw_value: raw,
-      }],
+      records: [record(STORAGE_KEY), record(MIGRATION_BACKUP_KEY)],
     };
   };
 
@@ -334,14 +392,17 @@
 
   root.TimecardStore = Object.freeze({
     storageKey: STORAGE_KEY,
+    migrationBackupKey: MIGRATION_BACKUP_KEY,
     changeEvent: CHANGE_EVENT,
     errorEvent: ERROR_EVENT,
     lockName: LOCK_NAME,
+    stateVersion: STATE_VERSION,
     inspect,
     read: readUnlocked,
     write,
     rawBackup,
     defaultState,
+    toRollingState,
     isState,
     isLegacyState,
     readLegacy,
