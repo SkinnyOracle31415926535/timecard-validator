@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --check transfer-theme.js && node --check timecard-semantic-storage.js && node --check semantic-app-sync.js && node --check worker/index.js && node --test tests/transfer-theme.test.cjs && npm run build"
+    "test": "node --check timecard-store.js && node --check worker/index.js && node --test tests/timecard-store.test.mjs tests/private-sync-retirement.test.cjs && npm run build"
   }
 }

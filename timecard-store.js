@@ -79,22 +79,6 @@
     value.days.every(isDay)
   );
 
-  const isWorkspaceValue = value => (
-    exactKeys(value, ['weekStart', 'weeks']) &&
-    typeof value.weekStart === 'string' &&
-    validSaturday(value.weekStart) &&
-    Array.isArray(value.weeks) &&
-    value.weeks.length === MAX_WEEKS &&
-    value.weeks.every(isWeek)
-  );
-
-  const isViewValue = value => (
-    exactKeys(value, ['visibleWeekCount']) &&
-    Number.isSafeInteger(value.visibleWeekCount) &&
-    value.visibleWeekCount >= 1 &&
-    value.visibleWeekCount <= MAX_WEEKS
-  );
-
   const stateValidationReason = (value, { manualBreaks = false } = {}) => {
     if (!plainObject(value)) return 'the root must be a JSON object.';
     if (!exactKeys(value, ['version', 'weekStart', 'visibleWeekCount', 'weeks'])) {
@@ -230,23 +214,11 @@
     return parsed === null ? null : clone(assertLegacyState(parsed));
   };
 
-  const workspaceValue = state => {
-    assertState(state);
-    return clone({
-      weekStart: state.weekStart,
-      weeks: state.weeks,
-    });
-  };
-
-  const viewValue = state => {
-    assertState(state);
-    return { visibleWeekCount: state.visibleWeekCount };
-  };
-
   const changedFacets = (before, after) => {
     if (!before) return ['workspace', 'view'];
     const changed = [];
-    if (JSON.stringify(workspaceValue(before)) !== JSON.stringify(workspaceValue(after))) {
+    if (before.weekStart !== after.weekStart ||
+        JSON.stringify(before.weeks) !== JSON.stringify(after.weeks)) {
       changed.push('workspace');
     }
     if (before.visibleWeekCount !== after.visibleWeekCount) changed.push('view');
@@ -267,23 +239,19 @@
     const nextRaw = JSON.stringify(next);
     const changed = changedFacets(previous, next);
     if (previousRaw === nextRaw) {
-      return { state: next, changed: [], settled: Promise.resolve([]) };
+      return { state: next, changed: [] };
     }
 
     root.localStorage.setItem(STORAGE_KEY, nextRaw);
     lastError = null;
-    const pending = [];
     root.dispatchEvent(new CustomEvent(CHANGE_EVENT, {
       detail: {
         source,
         state: clone(next),
         changed: changed.slice(),
-        waitUntil(promise) {
-          pending.push(Promise.resolve(promise));
-        },
       },
     }));
-    return { state: next, changed, settled: Promise.all(pending) };
+    return { state: next, changed };
   };
 
   const withAggregateLock = callback => {
@@ -297,66 +265,12 @@
   };
 
   const write = async (candidate, { source = 'local' } = {}) => {
-    let committed;
     try {
-      committed = await withAggregateLock(() => writeUnlocked(candidate, source));
+      return await withAggregateLock(() => writeUnlocked(candidate, source));
     } catch (error) {
       publishError(error);
       throw error;
     }
-    try {
-      await committed.settled;
-    } catch (error) {
-      if (error && typeof error === 'object') error.localSaved = true;
-      publishError(error);
-      throw error;
-    }
-    return committed;
-  };
-
-  const update = async (mutator, source) => {
-    let committed;
-    try {
-      committed = await withAggregateLock(() => {
-        const existing = readUnlocked();
-        const base = existing || defaultState();
-        const next = mutator(clone(base));
-        return writeUnlocked(next, source);
-      });
-    } catch (error) {
-      publishError(error);
-      throw error;
-    }
-    try {
-      await committed.settled;
-    } catch (error) {
-      if (error && typeof error === 'object') error.localSaved = true;
-      publishError(error);
-      throw error;
-    }
-    return committed;
-  };
-
-  const applyWorkspace = (value, { source = 'sync', deleted = false } = {}) => {
-    if (deleted) throw new Error('The current timecard workspace cannot be deleted by synchronization.');
-    if (!isWorkspaceValue(value)) throw new Error('The synchronized timecard workspace is invalid.');
-    return update(state => ({
-      version: 1,
-      weekStart: value.weekStart,
-      visibleWeekCount: state.visibleWeekCount,
-      weeks: clone(value.weeks),
-    }), source);
-  };
-
-  const applyView = (value, { source = 'sync', deleted = false } = {}) => {
-    if (deleted) throw new Error('The Timecard view preference cannot be deleted by synchronization.');
-    if (!isViewValue(value)) throw new Error('The synchronized Timecard view preference is invalid.');
-    return update(state => ({
-      version: 1,
-      weekStart: state.weekStart,
-      visibleWeekCount: value.visibleWeekCount,
-      weeks: clone(state.weeks),
-    }), source);
   };
 
   const inspect = () => {
@@ -411,7 +325,6 @@
           source: 'storage',
           state: clone(next),
           changed: changedFacets(previous, next),
-          waitUntil() {},
         },
       }));
     } catch (error) {
@@ -429,15 +342,9 @@
     write,
     rawBackup,
     defaultState,
-    workspaceValue,
-    viewValue,
     isState,
     isLegacyState,
-    isWorkspaceValue,
-    isViewValue,
     readLegacy,
-    applyWorkspace,
-    applyView,
     getLastError: () => lastError,
   });
 })();
